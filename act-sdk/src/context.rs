@@ -17,6 +17,7 @@ pub enum RawStreamEvent {
 }
 
 /// Context passed to tool functions. Provides config access and stream writing.
+#[allow(dead_code)]
 pub struct ActContext<C = ()> {
     config: C,
     events: Vec<RawStreamEvent>,
