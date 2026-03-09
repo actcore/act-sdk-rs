@@ -214,7 +214,7 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
         struct_args = None;
     }
 
-    let streaming = attrs.streaming || has_context;
+    let streaming = attrs.streaming;
 
     Ok(ToolInfo {
         func: func.clone(),

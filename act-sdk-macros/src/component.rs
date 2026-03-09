@@ -87,6 +87,17 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         .filter(|t| t.struct_args.is_none() && !t.args.is_empty())
         .map(gen_arg_struct);
 
+    // Generate config schema expression
+    let config_schema_expr = if let Some(config_type) = tools.iter().find_map(|t| t.config_type.as_ref()) {
+        quote! {
+            Some(::act_sdk::__private::serde_json::to_string(
+                &::act_sdk::__private::schemars::schema_for!(#config_type)
+            ).unwrap_or_else(|_| r#"{"type":"object"}"#.to_string()))
+        }
+    } else {
+        quote! { None }
+    };
+
     // Generate the complete output
     let output = quote! {
         // WIT bindings generation
@@ -138,7 +149,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             }
 
             fn get_config_schema() -> Option<String> {
-                None
+                #config_schema_expr
             }
 
             async fn list_tools(

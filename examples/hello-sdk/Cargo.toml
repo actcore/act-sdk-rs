@@ -7,7 +7,7 @@ edition = "2024"
 act-sdk = { path = "../../act-sdk" }
 wit-bindgen = { version = "0.53", features = ["async-spawn"] }
 serde = { version = "1", features = ["derive"] }
-schemars = "0.8"
+schemars = "1"
 
 [lib]
 crate-type = ["cdylib"]
