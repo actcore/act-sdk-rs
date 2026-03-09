@@ -41,9 +41,8 @@ impl<C> ActContext<C> {
 
     /// Send a text content event.
     pub async fn send_text(&mut self, text: impl Into<String>) -> ActResult<()> {
-        let data = to_cbor(&text.into());
         self.events.push(RawStreamEvent::Content {
-            data,
+            data: text.into().into_bytes(),
             mime_type: Some("text/plain".to_string()),
             metadata: vec![],
         });
@@ -72,9 +71,8 @@ impl<C> ActContext<C> {
         total: u64,
         text: impl Into<String>,
     ) -> ActResult<()> {
-        let data = to_cbor(&text.into());
         self.events.push(RawStreamEvent::Content {
-            data,
+            data: text.into().into_bytes(),
             mime_type: Some("text/plain".to_string()),
             metadata: vec![
                 ("std:progress".to_string(), to_cbor(&current)),

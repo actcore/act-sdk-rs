@@ -9,7 +9,7 @@ pub trait IntoResponse {
 impl IntoResponse for String {
     fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
         vec![RawStreamEvent::Content {
-            data: to_cbor(&self),
+            data: self.into_bytes(),
             mime_type: Some("text/plain".to_string()),
             metadata: vec![],
         }]
