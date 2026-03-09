@@ -1,0 +1,12 @@
+[package]
+name = "act-sdk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+act-sdk-macros = { path = "../act-sdk-macros" }
+wit-bindgen = { version = "0.53", features = ["async-spawn"] }
+ciborium = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "0.8"

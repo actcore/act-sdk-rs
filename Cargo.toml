@@ -1,0 +1,3 @@
+[workspace]
+members = ["act-sdk", "act-sdk-macros"]
+resolver = "3"
