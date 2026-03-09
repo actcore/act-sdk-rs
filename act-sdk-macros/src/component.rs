@@ -90,7 +90,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Generate the complete output
     let output = quote! {
         // WIT bindings generation
-        ::act_sdk::__private::wit_bindgen::generate!({
+        wit_bindgen::generate!({
             path: "wit",
             world: "act-world",
         });
@@ -158,7 +158,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             ) -> act::core::types::CallResponse {
                 let (mut writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
 
-                ::act_sdk::__private::wit_bindgen::spawn(async move {
+                wit_bindgen::spawn(async move {
                     let __default_lang = #default_lang;
                     match call.name.as_str() {
                         #(#call_arms)*
@@ -213,6 +213,8 @@ fn extract_tools(module: &ItemMod) -> syn::Result<Vec<ToolInfo>> {
 }
 
 /// Collect user items from the module, stripping #[act_tool] attributes from functions.
+/// Also rewrites `use super::*` to `use crate::*` since the module body is flattened to top level,
+/// and strips #[doc] attributes from function parameters (not allowed by rustc).
 fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
     let mut items = Vec::new();
 
@@ -225,9 +227,21 @@ fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
                     clean_func
                         .attrs
                         .retain(|a| !a.path().is_ident("act_tool"));
+                    // Strip #[doc] attributes from function parameters
+                    for input in &mut clean_func.sig.inputs {
+                        if let syn::FnArg::Typed(pat_type) = input {
+                            pat_type.attrs.retain(|a| !a.path().is_ident("doc"));
+                        }
+                    }
                     items.push(quote! { #clean_func });
                 }
                 Item::Use(u) => {
+                    // Rewrite `use super::*` and `use super::Foo` to nothing,
+                    // since the module is flattened and parent items are at the same level.
+                    if is_super_use(u) {
+                        // Skip — the items from "super" are already at crate level
+                        continue;
+                    }
                     items.push(quote! { #u });
                 }
                 other => {
@@ -238,6 +252,18 @@ fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
     }
 
     items
+}
+
+/// Check if a `use` item refers to `super::`.
+fn is_super_use(u: &syn::ItemUse) -> bool {
+    fn tree_starts_with_super(tree: &syn::UseTree) -> bool {
+        match tree {
+            syn::UseTree::Path(p) => p.ident == "super",
+            syn::UseTree::Group(g) => g.items.iter().any(tree_starts_with_super),
+            _ => false,
+        }
+    }
+    tree_starts_with_super(&u.tree)
 }
 
 /// Generate a ToolDefinition expression for list_tools.
