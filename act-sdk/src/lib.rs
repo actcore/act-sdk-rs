@@ -15,10 +15,13 @@ pub mod prelude {
     pub use serde::Deserialize;
 }
 
+// Re-export act-types constants for use by generated code and consumers
+pub use act_types::constants;
+
 // Re-export dependencies that generated code needs
 #[doc(hidden)]
 pub mod __private {
-    pub use ciborium;
+    pub use act_types::cbor as ciborium_compat;
     pub use schemars;
     pub use serde;
     pub use serde_json;

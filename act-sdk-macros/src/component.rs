@@ -176,7 +176,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
                         __other => {
                             let _ = writer.write_all(vec![
                                 act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                    kind: "std:not-found".to_string(),
+                                    kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
                                     message: vec![
                                         (__default_lang.to_string(), format!("Tool '{}' not found", __other))
                                     ],
@@ -312,27 +312,27 @@ fn gen_tool_definition(tool: &ToolInfo, default_lang: &str) -> TokenStream {
 
     if tool.read_only {
         metadata_entries.push(quote! {
-            ("std:read-only".to_string(), ::act_sdk::cbor::to_cbor(&true))
+            (::act_sdk::constants::META_READ_ONLY.to_string(), ::act_sdk::cbor::to_cbor(&true))
         });
     }
     if tool.idempotent {
         metadata_entries.push(quote! {
-            ("std:idempotent".to_string(), ::act_sdk::cbor::to_cbor(&true))
+            (::act_sdk::constants::META_IDEMPOTENT.to_string(), ::act_sdk::cbor::to_cbor(&true))
         });
     }
     if tool.destructive {
         metadata_entries.push(quote! {
-            ("std:destructive".to_string(), ::act_sdk::cbor::to_cbor(&true))
+            (::act_sdk::constants::META_DESTRUCTIVE.to_string(), ::act_sdk::cbor::to_cbor(&true))
         });
     }
     if tool.streaming {
         metadata_entries.push(quote! {
-            ("std:streaming".to_string(), ::act_sdk::cbor::to_cbor(&true))
+            (::act_sdk::constants::META_STREAMING.to_string(), ::act_sdk::cbor::to_cbor(&true))
         });
     }
     if let Some(ms) = tool.timeout_ms {
         metadata_entries.push(quote! {
-            ("std:timeout-ms".to_string(), ::act_sdk::cbor::to_cbor(&#ms))
+            (::act_sdk::constants::META_TIMEOUT_MS.to_string(), ::act_sdk::cbor::to_cbor(&#ms))
         });
     }
 
@@ -360,7 +360,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                 Err(e) => {
                     let _ = writer.write_all(vec![
                         act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                            kind: "std:invalid-args".to_string(),
+                            kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                             message: vec![(__default_lang.to_string(), format!("Failed to deserialize arguments: {}", e))],
                             metadata: vec![],
                         })
@@ -396,7 +396,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                 Err(e) => {
                     let _ = writer.write_all(vec![
                         act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                            kind: "std:invalid-args".to_string(),
+                            kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                             message: vec![(__default_lang.to_string(), format!("Failed to deserialize arguments: {}", e))],
                             metadata: vec![],
                         })
@@ -432,7 +432,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                         Err(e) => {
                             let _ = writer.write_all(vec![
                                 act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                    kind: "std:invalid-args".to_string(),
+                                    kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                                     message: vec![(__default_lang.to_string(), format!("Failed to deserialize config: {}", e))],
                                     metadata: vec![],
                                 })
@@ -443,7 +443,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     None => {
                         let _ = writer.write_all(vec![
                             act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                kind: "std:invalid-args".to_string(),
+                                kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                                 message: vec![(__default_lang.to_string(), "Config required but not provided".to_string())],
                                 metadata: vec![],
                             })

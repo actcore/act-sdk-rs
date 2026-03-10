@@ -1,4 +1,5 @@
-use crate::cbor::to_cbor;
+use act_types::cbor::to_cbor;
+use act_types::constants::*;
 use crate::types::ActResult;
 
 /// Raw stream event before conversion to WIT types.
@@ -75,8 +76,8 @@ impl<C> ActContext<C> {
             data: text.into().into_bytes(),
             mime_type: Some("text/plain".to_string()),
             metadata: vec![
-                ("std:progress".to_string(), to_cbor(&current)),
-                ("std:progress-total".to_string(), to_cbor(&total)),
+                (META_PROGRESS.to_string(), to_cbor(&current)),
+                (META_PROGRESS_TOTAL.to_string(), to_cbor(&total)),
             ],
         });
         Ok(())

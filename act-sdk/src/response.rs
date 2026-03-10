@@ -1,4 +1,4 @@
-use crate::cbor::to_cbor;
+use act_types::cbor::to_cbor;
 use crate::context::RawStreamEvent;
 
 /// Trait for types that can be converted into stream events.
