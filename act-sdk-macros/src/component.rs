@@ -122,10 +122,10 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
                         metadata,
                     })
                 }
-                ::act_sdk::context::RawStreamEvent::Error { kind, message, default_language } => {
+                ::act_sdk::context::RawStreamEvent::Error { kind, message, default_language: _ } => {
                     act::core::types::StreamEvent::Error(act::core::types::ToolError {
                         kind,
-                        message: vec![(default_language, message)],
+                        message: act::core::types::LocalizedString::Plain(message),
                         metadata: vec![],
                     })
                 }
@@ -142,7 +142,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
                     name: #comp_name.to_string(),
                     version: #comp_version.to_string(),
                     default_language: #default_lang.to_string(),
-                    description: vec![(#default_lang.to_string(), #comp_description.to_string())],
+                    description: act::core::types::LocalizedString::Plain(#comp_description.to_string()),
                     capabilities: vec![],
                     metadata: vec![],
                 }
@@ -177,9 +177,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
                             let _ = writer.write_all(vec![
                                 act::core::types::StreamEvent::Error(act::core::types::ToolError {
                                     kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
-                                    message: vec![
-                                        (__default_lang.to_string(), format!("Tool '{}' not found", __other))
-                                    ],
+                                    message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
                                     metadata: vec![],
                                 })
                             ]).await;
@@ -278,7 +276,7 @@ fn is_super_use(u: &syn::ItemUse) -> bool {
 }
 
 /// Generate a ToolDefinition expression for list_tools.
-fn gen_tool_definition(tool: &ToolInfo, default_lang: &str) -> TokenStream {
+fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     let name = &tool.tool_name;
     let desc = &tool.description;
 
@@ -339,7 +337,7 @@ fn gen_tool_definition(tool: &ToolInfo, default_lang: &str) -> TokenStream {
     quote! {
         act::core::types::ToolDefinition {
             name: #name.to_string(),
-            description: vec![(#default_lang.to_string(), #desc.to_string())],
+            description: act::core::types::LocalizedString::Plain(#desc.to_string()),
             parameters_schema: #schema_expr,
             metadata: vec![#(#metadata_entries),*],
         }
@@ -361,7 +359,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     let _ = writer.write_all(vec![
                         act::core::types::StreamEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: vec![(__default_lang.to_string(), format!("Failed to deserialize arguments: {}", e))],
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
                     ]).await;
@@ -397,7 +395,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     let _ = writer.write_all(vec![
                         act::core::types::StreamEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: vec![(__default_lang.to_string(), format!("Failed to deserialize arguments: {}", e))],
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
                     ]).await;
@@ -433,7 +431,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                             let _ = writer.write_all(vec![
                                 act::core::types::StreamEvent::Error(act::core::types::ToolError {
                                     kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                    message: vec![(__default_lang.to_string(), format!("Failed to deserialize config: {}", e))],
+                                    message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize config: {}", e)),
                                     metadata: vec![],
                                 })
                             ]).await;
@@ -444,7 +442,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                         let _ = writer.write_all(vec![
                             act::core::types::StreamEvent::Error(act::core::types::ToolError {
                                 kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                message: vec![(__default_lang.to_string(), "Config required but not provided".to_string())],
+                                message: act::core::types::LocalizedString::Plain("Config required but not provided".to_string()),
                                 metadata: vec![],
                             })
                         ]).await;
@@ -493,7 +491,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
                     __wit_events.push(act::core::types::StreamEvent::Error(act::core::types::ToolError {
                         kind: __err.kind.clone(),
-                        message: vec![(__default_lang.to_string(), __err.message.clone())],
+                        message: act::core::types::LocalizedString::Plain(__err.message.clone()),
                         metadata: vec![],
                     }));
                     let _ = writer.write_all(__wit_events).await;
@@ -518,7 +516,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     let _ = writer.write_all(vec![
                         act::core::types::StreamEvent::Error(act::core::types::ToolError {
                             kind: __err.kind.clone(),
-                            message: vec![(__default_lang.to_string(), __err.message.clone())],
+                            message: act::core::types::LocalizedString::Plain(__err.message.clone()),
                             metadata: vec![],
                         })
                     ]).await;

@@ -1,3 +1,3 @@
 [workspace]
-members = ["act-sdk", "act-sdk-macros", "examples/hello-sdk", "examples/config-sdk", "examples/http-client-sdk"]
+members = ["act-sdk", "act-sdk-macros", "examples/hello-sdk", "examples/config-sdk", "examples/http-client-sdk", "examples/hello-world", "examples/counter", "examples/http-client"]
 resolver = "3"
