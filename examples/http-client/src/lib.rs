@@ -1,6 +1,7 @@
 wit_bindgen::generate!({
     path: "wit",
-    world: "act-world",
+    world: "component-world",
+    generate_all,
 });
 
 use exports::act::core::tool_provider::Guest;

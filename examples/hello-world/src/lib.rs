@@ -1,6 +1,7 @@
 wit_bindgen::generate!({
     path: "wit",
-    world: "act-world",
+    world: "component-world",
+    generate_all,
 });
 
 use exports::act::core::tool_provider::Guest;
@@ -17,13 +18,6 @@ fn respond(events: Vec<StreamEvent>) -> wit_bindgen::rt::async_support::StreamRe
         writer.write_all(events).await;
     });
     reader
-}
-
-/// Encode a value as CBOR bytes.
-fn to_cbor(value: &serde_json::Value) -> Vec<u8> {
-    let mut buf = Vec::new();
-    ciborium::into_writer(value, &mut buf).unwrap();
-    buf
 }
 
 /// Decode CBOR bytes to a JSON value.

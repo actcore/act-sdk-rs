@@ -103,7 +103,8 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         // WIT bindings generation
         wit_bindgen::generate!({
             path: "wit",
-            world: "act-world",
+            world: "component-world",
+            generate_all,
         });
 
         // User-defined items from the module body
