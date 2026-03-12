@@ -167,7 +167,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             async fn call_tool(
                 _config: Option<Vec<u8>>,
                 call: act::core::types::ToolCall,
-            ) -> act::core::types::CallResponse {
+            ) -> wit_bindgen::rt::async_support::StreamReader<act::core::types::StreamEvent> {
                 let (mut writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
 
                 wit_bindgen::spawn(async move {
@@ -186,10 +186,7 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
                     }
                 });
 
-                act::core::types::CallResponse {
-                    metadata: vec![],
-                    body: reader,
-                }
+                reader
             }
         }
     };

@@ -90,7 +90,7 @@ impl Guest for HttpClient {
     async fn call_tool(
         _config: Option<Vec<u8>>,
         call: ToolCall,
-    ) -> CallResponse {
+    ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
         let (mut writer, reader) = wit_stream::new::<StreamEvent>();
         let arguments = call.arguments;
         let name = call.name;
@@ -103,10 +103,7 @@ impl Guest for HttpClient {
             writer.write_all(vec![event]).await;
         });
 
-        CallResponse {
-            metadata: vec![],
-            body: reader,
-        }
+        reader
     }
 }
 

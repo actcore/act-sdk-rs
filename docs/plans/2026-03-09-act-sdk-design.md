@@ -172,7 +172,7 @@ Registers the function as a tool. Macro inspects signature to determine:
 The generated `call_tool` dispatch always:
 1. Creates `wit_stream::new::<StreamEvent>()`
 2. Spawns the tool function with the writer via `wit_bindgen::spawn()`
-3. Returns the reader in `CallResponse` immediately
+3. Returns the `StreamReader<StreamEvent>` immediately
 
 The component author cannot deadlock — the spawn-and-return pattern is enforced by codegen.
 

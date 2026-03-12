@@ -67,7 +67,7 @@ impl Guest for Counter {
     async fn call_tool(
         _config: Option<Vec<u8>>,
         call: ToolCall,
-    ) -> CallResponse {
+    ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
         let events = match call.name.as_str() {
             "count" => {
                 let args = from_cbor(&call.arguments);
@@ -93,9 +93,6 @@ impl Guest for Counter {
             })],
         };
 
-        CallResponse {
-            metadata: vec![],
-            body: respond(events),
-        }
+        respond(events)
     }
 }

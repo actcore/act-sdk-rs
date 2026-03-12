@@ -62,7 +62,7 @@ impl Guest for HelloWorld {
     async fn call_tool(
         _config: Option<Vec<u8>>,
         call: ToolCall,
-    ) -> CallResponse {
+    ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
         let event = match call.name.as_str() {
             "greet" => {
                 let args = from_cbor(&call.arguments);
@@ -82,9 +82,6 @@ impl Guest for HelloWorld {
             }),
         };
 
-        CallResponse {
-            metadata: vec![],
-            body: respond(vec![event]),
-        }
+        respond(vec![event])
     }
 }
