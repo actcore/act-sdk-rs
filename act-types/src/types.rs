@@ -36,9 +36,12 @@ impl LocalizedString {
     }
 
     /// Look up text for a specific language tag.
+    ///
+    /// For `Plain`, always returns the text (it is assumed to match any language).
+    /// For `Localized`, performs exact key lookup.
     pub fn get(&self, lang: &str) -> Option<&str> {
         match self {
-            Self::Plain(_) => None,
+            Self::Plain(text) => Some(text.as_str()),
             Self::Localized(map) => map.get(lang).map(|s| s.as_str()),
         }
     }
@@ -108,23 +111,30 @@ impl From<HashMap<String, String>> for LocalizedString {
 
 // ── Metadata ──
 
-/// Key → CBOR-encoded value pairs, stored as a HashMap for O(1) lookup.
+/// Key → value metadata, stored as JSON values internally.
+///
+/// Converts to/from WIT `list<tuple<string, list<u8>>>` (CBOR) at the boundary.
 #[derive(Debug, Clone, Default)]
-pub struct Metadata(HashMap<String, Vec<u8>>);
+pub struct Metadata(HashMap<String, serde_json::Value>);
 
 impl Metadata {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 
-    /// Insert a serializable value as CBOR. Overwrites any existing entry for the key.
-    pub fn insert(&mut self, key: impl Into<String>, value: &impl serde::Serialize) {
-        self.0.insert(key.into(), cbor::to_cbor(value));
+    /// Insert a value. Overwrites any existing entry for the key.
+    pub fn insert(&mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) {
+        self.0.insert(key.into(), value.into());
     }
 
-    /// Get a value by key, deserializing from CBOR.
-    pub fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        self.0.get(key).and_then(|bytes| cbor::from_cbor(bytes).ok())
+    /// Get a value by key.
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.0.get(key)
+    }
+
+    /// Get a value by key, deserializing into a typed value.
+    pub fn get_as<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        self.0.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     /// Check if a key exists.
@@ -138,7 +148,7 @@ impl Metadata {
     }
 
     /// Iterate over key-value pairs.
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<u8>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &serde_json::Value)> {
         self.0.iter()
     }
 
@@ -149,114 +159,93 @@ impl Metadata {
         }
         let map: serde_json::Map<String, serde_json::Value> = self.0
             .iter()
-            .filter_map(|(key, cbor_bytes)| {
-                let val = cbor::cbor_to_json(cbor_bytes).ok()?;
-                Some((key.clone(), val))
-            })
+            .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         Some(serde_json::Value::Object(map))
     }
 }
 
+/// Convert from WIT metadata (CBOR-encoded values).
 impl From<Vec<(String, Vec<u8>)>> for Metadata {
     fn from(v: Vec<(String, Vec<u8>)>) -> Self {
-        Self(v.into_iter().collect())
+        Self(v.into_iter().filter_map(|(k, cbor_bytes)| {
+            let val = cbor::cbor_to_json(&cbor_bytes).ok()?;
+            Some((k, val))
+        }).collect())
     }
 }
 
+/// Convert to WIT metadata (CBOR-encoded values).
 impl From<Metadata> for Vec<(String, Vec<u8>)> {
     fn from(m: Metadata) -> Self {
-        m.0.into_iter().collect()
+        m.0.into_iter()
+            .map(|(k, v)| (k, cbor::to_cbor(&v)))
+            .collect()
     }
 }
 
-// ── Args ──
+// ── CBOR byte wrappers ──
 
-/// Tool arguments as CBOR bytes.
-#[derive(Debug, Clone)]
-pub struct Args(pub Vec<u8>);
+/// Shared implementation for CBOR byte wrapper types.
+macro_rules! cbor_wrapper {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone)]
+        pub struct $name(Vec<u8>);
 
-impl Args {
-    /// Decode from a JSON value.
-    pub fn from_json(value: &serde_json::Value) -> Result<Self, cbor::CborError> {
-        cbor::json_to_cbor(value).map(Self)
-    }
+        impl $name {
+            /// Encode a JSON value to CBOR.
+            pub fn from_json(value: &serde_json::Value) -> Result<Self, cbor::CborError> {
+                cbor::json_to_cbor(value).map(Self)
+            }
 
-    /// Encode to CBOR bytes (already stored as CBOR).
-    pub fn to_cbor(&self) -> &[u8] {
-        &self.0
-    }
+            /// Convert from an optional JSON value.
+            pub fn from_json_opt(value: &Option<serde_json::Value>) -> Result<Option<Self>, cbor::CborError> {
+                match value {
+                    Some(val) => Self::from_json(val).map(Some),
+                    None => Ok(None),
+                }
+            }
 
-    /// Decode to a JSON value.
-    pub fn to_json(&self) -> Result<serde_json::Value, cbor::CborError> {
-        cbor::cbor_to_json(&self.0)
-    }
+            /// Get the raw CBOR bytes.
+            pub fn as_bytes(&self) -> &[u8] {
+                &self.0
+            }
 
-    /// Deserialize into a typed value.
-    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, cbor::CborError> {
-        cbor::from_cbor(&self.0)
-    }
-}
+            /// Decode to a JSON value.
+            pub fn to_json(&self) -> Result<serde_json::Value, cbor::CborError> {
+                cbor::cbor_to_json(&self.0)
+            }
 
-impl From<Vec<u8>> for Args {
-    fn from(v: Vec<u8>) -> Self {
-        Self(v)
-    }
-}
-
-impl From<Args> for Vec<u8> {
-    fn from(a: Args) -> Self {
-        a.0
-    }
-}
-
-// ── Config ──
-
-/// Configuration as CBOR bytes.
-#[derive(Debug, Clone)]
-pub struct Config(pub Vec<u8>);
-
-impl Config {
-    /// Decode from a JSON value.
-    pub fn from_json(value: &serde_json::Value) -> Result<Self, cbor::CborError> {
-        cbor::json_to_cbor(value).map(Self)
-    }
-
-    /// Encode to CBOR bytes (already stored as CBOR).
-    pub fn to_cbor(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Decode to a JSON value.
-    pub fn to_json(&self) -> Result<serde_json::Value, cbor::CborError> {
-        cbor::cbor_to_json(&self.0)
-    }
-
-    /// Deserialize into a typed value.
-    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, cbor::CborError> {
-        cbor::from_cbor(&self.0)
-    }
-
-    /// Convert from an optional JSON value.
-    pub fn from_json_opt(value: &Option<serde_json::Value>) -> Result<Option<Self>, cbor::CborError> {
-        match value {
-            Some(val) => Self::from_json(val).map(Some),
-            None => Ok(None),
+            /// Deserialize into a typed value.
+            pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, cbor::CborError> {
+                cbor::from_cbor(&self.0)
+            }
         }
-    }
+
+        impl From<Vec<u8>> for $name {
+            fn from(v: Vec<u8>) -> Self {
+                Self(v)
+            }
+        }
+
+        impl From<$name> for Vec<u8> {
+            fn from(w: $name) -> Self {
+                w.0
+            }
+        }
+    };
 }
 
-impl From<Vec<u8>> for Config {
-    fn from(v: Vec<u8>) -> Self {
-        Self(v)
-    }
-}
+cbor_wrapper!(
+    /// Tool arguments as CBOR bytes.
+    Args
+);
 
-impl From<Config> for Vec<u8> {
-    fn from(c: Config) -> Self {
-        c.0
-    }
-}
+cbor_wrapper!(
+    /// Component configuration as CBOR bytes.
+    Config
+);
 
 use crate::constants::*;
 
@@ -291,6 +280,10 @@ impl ActError {
 
     pub fn timeout(message: impl Into<String>) -> Self {
         Self::new(ERR_TIMEOUT, message)
+    }
+
+    pub fn capability_denied(message: impl Into<String>) -> Self {
+        Self::new(ERR_CAPABILITY_DENIED, message)
     }
 }
 
@@ -367,8 +360,9 @@ mod tests {
     #[test]
     fn metadata_insert_and_get() {
         let mut m = Metadata::new();
-        m.insert("std:read-only", &true);
-        assert_eq!(m.get::<bool>("std:read-only"), Some(true));
+        m.insert("std:read-only", true);
+        assert_eq!(m.get("std:read-only"), Some(&json!(true)));
+        assert_eq!(m.get_as::<bool>("std:read-only"), Some(true));
     }
 
     #[test]
@@ -379,7 +373,7 @@ mod tests {
     #[test]
     fn metadata_to_json_with_values() {
         let mut m = Metadata::new();
-        m.insert("std:read-only", &true);
+        m.insert("std:read-only", true);
         let json = m.to_json().unwrap();
         assert_eq!(json["std:read-only"], json!(true));
     }
@@ -388,7 +382,8 @@ mod tests {
     fn metadata_from_vec() {
         let v = vec![("key".to_string(), cbor::to_cbor(&42u32))];
         let m = Metadata::from(v);
-        assert_eq!(m.get::<u32>("key"), Some(42));
+        assert_eq!(m.get("key"), Some(&json!(42)));
+        assert_eq!(m.get_as::<u32>("key"), Some(42));
     }
 
     #[test]
