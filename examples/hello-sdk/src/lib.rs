@@ -9,7 +9,7 @@ struct GreetArgs {
 #[act_component(
     name = "hello-sdk",
     version = "0.1.0",
-    description = "Hello world using act-sdk",
+    description = "Hello world using act-sdk"
 )]
 mod component {
     use super::*;
@@ -30,7 +30,8 @@ mod component {
         ctx: &mut ActContext<()>,
     ) -> ActResult<()> {
         for i in 1..=n {
-            ctx.send_progress(i as u64, n as u64, format!("Count: {i}")).await?;
+            ctx.send_progress(i as u64, n as u64, format!("Count: {i}"))
+                .await?;
         }
         Ok(())
     }

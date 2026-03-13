@@ -9,8 +9,8 @@ pub use response::IntoResponse;
 pub use types::{ActError, ActResult};
 
 pub mod prelude {
-    pub use crate::{act_component, act_tool};
     pub use crate::{ActContext, ActError, ActResult, IntoResponse};
+    pub use crate::{act_component, act_tool};
     pub use schemars::JsonSchema;
     pub use serde::Deserialize;
 }

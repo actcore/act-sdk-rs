@@ -1,6 +1,6 @@
+use crate::types::ActResult;
 use act_types::cbor::to_cbor;
 use act_types::constants::*;
-use crate::types::ActResult;
 
 /// Raw stream event before conversion to WIT types.
 /// Used internally by ActContext; the generated code converts to WIT StreamEvent.

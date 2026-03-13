@@ -26,8 +26,7 @@ pub fn json_to_cbor(value: &serde_json::Value) -> Result<Vec<u8>, CborError> {
 
 /// Convert CBOR bytes to a JSON value.
 pub fn cbor_to_json(bytes: &[u8]) -> Result<serde_json::Value, CborError> {
-    ciborium::from_reader(bytes)
-        .map_err(|e| CborError(format!("CBOR→JSON decode failed: {e}")))
+    ciborium::from_reader(bytes).map_err(|e| CborError(format!("CBOR→JSON decode failed: {e}")))
 }
 
 /// Decode content-part data based on MIME type.

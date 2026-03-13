@@ -4,8 +4,8 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::act::core::tool_provider::Guest;
 use act::core::types::*;
+use exports::act::core::tool_provider::Guest;
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -53,7 +53,9 @@ impl Guest for HttpClient {
             capabilities: vec![Capability {
                 id: "wasi:http/client".to_string(),
                 required: true,
-                description: Some(LocalizedString::Plain("Make outbound HTTP requests".to_string())),
+                description: Some(LocalizedString::Plain(
+                    "Make outbound HTTP requests".to_string(),
+                )),
                 metadata: vec![],
             }],
             metadata: vec![],
@@ -64,9 +66,7 @@ impl Guest for HttpClient {
         None
     }
 
-    async fn list_tools(
-        _config: Option<Vec<u8>>,
-    ) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_config: Option<Vec<u8>>) -> Result<ListToolsResponse, ToolError> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {

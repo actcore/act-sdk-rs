@@ -59,7 +59,8 @@ impl LocalizedString {
                     return text.as_str();
                 }
                 // 2. Prefix match (e.g. "zh" matches "zh-Hans")
-                if let Some(text) = map.iter()
+                if let Some(text) = map
+                    .iter()
                     .find(|(tag, _)| tag.starts_with(lang) || lang.starts_with(tag.as_str()))
                     .map(|(_, text)| text.as_str())
                 {
@@ -76,11 +77,7 @@ impl LocalizedString {
     pub fn any_text(&self) -> &str {
         match self {
             Self::Plain(text) => text.as_str(),
-            Self::Localized(map) => map
-                .values()
-                .next()
-                .map(|s| s.as_str())
-                .unwrap_or(""),
+            Self::Localized(map) => map.values().next().map(|s| s.as_str()).unwrap_or(""),
         }
     }
 }
@@ -134,7 +131,9 @@ impl Metadata {
 
     /// Get a value by key, deserializing into a typed value.
     pub fn get_as<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        self.0.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
+        self.0
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
     /// Check if a key exists.
@@ -157,10 +156,8 @@ impl Metadata {
         if self.0.is_empty() {
             return None;
         }
-        let map: serde_json::Map<String, serde_json::Value> = self.0
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let map: serde_json::Map<String, serde_json::Value> =
+            self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         Some(serde_json::Value::Object(map))
     }
 }
@@ -168,10 +165,14 @@ impl Metadata {
 /// Convert from WIT metadata (CBOR-encoded values).
 impl From<Vec<(String, Vec<u8>)>> for Metadata {
     fn from(v: Vec<(String, Vec<u8>)>) -> Self {
-        Self(v.into_iter().filter_map(|(k, cbor_bytes)| {
-            let val = cbor::cbor_to_json(&cbor_bytes).ok()?;
-            Some((k, val))
-        }).collect())
+        Self(
+            v.into_iter()
+                .filter_map(|(k, cbor_bytes)| {
+                    let val = cbor::cbor_to_json(&cbor_bytes).ok()?;
+                    Some((k, val))
+                })
+                .collect(),
+        )
     }
 }
 
@@ -397,7 +398,9 @@ mod tests {
     #[test]
     fn args_deserialize_typed() {
         #[derive(serde::Deserialize, PartialEq, Debug)]
-        struct Params { code: String }
+        struct Params {
+            code: String,
+        }
         let val = json!({"code": "hello"});
         let args = Args::from_json(&val).unwrap();
         let params: Params = args.deserialize().unwrap();

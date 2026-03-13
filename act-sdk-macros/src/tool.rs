@@ -138,8 +138,23 @@ fn looks_like_struct_type(ty: &Type) -> bool {
             let name = seg.ident.to_string();
             // Standard types that are NOT user structs
             let standard = [
-                "String", "Vec", "Option", "bool", "u8", "u16", "u32", "u64", "i8", "i16",
-                "i32", "i64", "f32", "f64", "usize", "isize", "ActContext",
+                "String",
+                "Vec",
+                "Option",
+                "bool",
+                "u8",
+                "u16",
+                "u32",
+                "u64",
+                "i8",
+                "i16",
+                "i32",
+                "i64",
+                "f32",
+                "f64",
+                "usize",
+                "isize",
+                "ActContext",
             ];
             if standard.contains(&name.as_str()) {
                 return false;

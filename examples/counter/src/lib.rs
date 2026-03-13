@@ -4,8 +4,8 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::act::core::tool_provider::Guest;
 use act::core::types::*;
+use exports::act::core::tool_provider::Guest;
 
 /// Create a response stream from a list of events.
 fn respond(events: Vec<StreamEvent>) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
@@ -48,9 +48,7 @@ impl Guest for Counter {
         None
     }
 
-    async fn list_tools(
-        _config: Option<Vec<u8>>,
-    ) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_config: Option<Vec<u8>>) -> Result<ListToolsResponse, ToolError> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
@@ -80,7 +78,10 @@ impl Guest for Counter {
                             mime_type: Some("text/plain".to_string()),
                             metadata: vec![
                                 ("std:progress".to_string(), to_cbor(&serde_json::json!(i))),
-                                ("std:progress-total".to_string(), to_cbor(&serde_json::json!(n))),
+                                (
+                                    "std:progress-total".to_string(),
+                                    to_cbor(&serde_json::json!(n)),
+                                ),
                             ],
                         })
                     })

@@ -22,7 +22,7 @@ struct GreetArgs {
 #[act_component(
     name = "config-example",
     version = "0.1.0",
-    description = "Example component with config",
+    description = "Example component with config"
 )]
 mod component {
     use super::*;

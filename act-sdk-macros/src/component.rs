@@ -88,15 +88,16 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         .map(gen_arg_struct);
 
     // Generate config schema expression
-    let config_schema_expr = if let Some(config_type) = tools.iter().find_map(|t| t.config_type.as_ref()) {
-        quote! {
-            Some(::act_sdk::__private::serde_json::to_string(
-                &::act_sdk::__private::schemars::schema_for!(#config_type)
-            ).unwrap_or_else(|_| r#"{"type":"object"}"#.to_string()))
-        }
-    } else {
-        quote! { None }
-    };
+    let config_schema_expr =
+        if let Some(config_type) = tools.iter().find_map(|t| t.config_type.as_ref()) {
+            quote! {
+                Some(::act_sdk::__private::serde_json::to_string(
+                    &::act_sdk::__private::schemars::schema_for!(#config_type)
+                ).unwrap_or_else(|_| r#"{"type":"object"}"#.to_string()))
+            }
+        } else {
+            quote! { None }
+        };
 
     // Generate the complete output
     let output = quote! {
@@ -202,10 +203,7 @@ fn extract_tools(module: &ItemMod) -> syn::Result<Vec<ToolInfo>> {
         for item in items {
             if let Item::Fn(func) = item {
                 // Find #[act_tool] attribute
-                let tool_attr = func
-                    .attrs
-                    .iter()
-                    .find(|a| a.path().is_ident("act_tool"));
+                let tool_attr = func.attrs.iter().find(|a| a.path().is_ident("act_tool"));
 
                 if let Some(attr) = tool_attr {
                     let attrs = ToolAttrs::parse(attr)?;
@@ -231,9 +229,7 @@ fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
                 Item::Fn(func) => {
                     // Strip #[act_tool] attribute but keep the function
                     let mut clean_func = func.clone();
-                    clean_func
-                        .attrs
-                        .retain(|a| !a.path().is_ident("act_tool"));
+                    clean_func.attrs.retain(|a| !a.path().is_ident("act_tool"));
                     // Strip #[doc] attributes from function parameters
                     for input in &mut clean_func.sig.inputs {
                         if let syn::FnArg::Typed(pat_type) = input {
@@ -384,7 +380,11 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     } else {
         // Individual params style: deserialize into hidden struct, extract fields
         let struct_name = gen_args_struct_ident(fn_ident);
-        let field_names: Vec<_> = tool.args.iter().map(|a| format_ident!("{}", a.name)).collect();
+        let field_names: Vec<_> = tool
+            .args
+            .iter()
+            .map(|a| format_ident!("{}", a.name))
+            .collect();
 
         let deser = quote! {
             let __args_struct: #struct_name = match ::act_sdk::cbor::from_cbor(&call.arguments) {

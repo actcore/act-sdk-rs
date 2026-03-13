@@ -24,7 +24,7 @@ fn default_method() -> String {
 #[act_component(
     name = "http-client",
     version = "0.1.0",
-    description = "HTTP client ACT component",
+    description = "HTTP client ACT component"
 )]
 mod component {
     use super::*;
@@ -40,7 +40,11 @@ mod component {
             "HEAD" => Method::Head,
             "OPTIONS" => Method::Options,
             "QUERY" => Method::Other("QUERY".to_string()),
-            other => return Err(ActError::invalid_args(format!("Unsupported method: {other}"))),
+            other => {
+                return Err(ActError::invalid_args(format!(
+                    "Unsupported method: {other}"
+                )));
+            }
         };
 
         let parsed = url::Url::parse(&args.url)
@@ -49,7 +53,11 @@ mod component {
         let scheme = match parsed.scheme() {
             "https" => Scheme::Https,
             "http" => Scheme::Http,
-            other => return Err(ActError::invalid_args(format!("Unsupported scheme: {other}"))),
+            other => {
+                return Err(ActError::invalid_args(format!(
+                    "Unsupported scheme: {other}"
+                )));
+            }
         };
 
         // Build headers

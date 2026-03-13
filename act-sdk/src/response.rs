@@ -1,5 +1,5 @@
-use act_types::cbor::to_cbor;
 use crate::context::RawStreamEvent;
+use act_types::cbor::to_cbor;
 
 /// Trait for types that can be converted into stream events.
 pub trait IntoResponse {

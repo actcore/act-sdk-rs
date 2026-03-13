@@ -4,8 +4,8 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use exports::act::core::tool_provider::Guest;
 use act::core::types::*;
+use exports::act::core::tool_provider::Guest;
 
 /// Create a response stream from a list of events.
 ///
@@ -45,9 +45,7 @@ impl Guest for HelloWorld {
         None
     }
 
-    async fn list_tools(
-        _config: Option<Vec<u8>>,
-    ) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_config: Option<Vec<u8>>) -> Result<ListToolsResponse, ToolError> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
