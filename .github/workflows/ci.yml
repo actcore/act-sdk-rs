@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check & Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-wasip2
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check (wasm32-wasip2)
+        run: cargo check --target wasm32-wasip2 --workspace --exclude hello-world --exclude http-client --exclude counter
+      - name: Check examples (wasm32-wasip2)
+        run: cargo check --target wasm32-wasip2 -p hello-sdk -p config-sdk -p http-client-sdk
+      - name: Clippy (host)
+        run: cargo clippy --target x86_64-unknown-linux-gnu -p act-types -p act-sdk-macros -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - name: Test act-types
+        run: cargo test --target x86_64-unknown-linux-gnu -p act-types
+      - name: Test act-sdk-macros
+        run: cargo test --target x86_64-unknown-linux-gnu -p act-sdk-macros
+
+  build:
+    name: Build components
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - name: Build all (wasm32-wasip2)
+        run: cargo build --target wasm32-wasip2 --workspace --release
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
