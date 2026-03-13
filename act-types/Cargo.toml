@@ -1,8 +1,13 @@
 [package]
 name = "act-types"
-version = "0.1.0"
-edition = "2024"
-description = "Shared types and CBOR utilities for the ACT protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Shared types and CBOR utilities for the ACT (Agent Component Tools) protocol"
+keywords = ["act", "wasm", "component-model", "mcp", "tools"]
+categories = ["wasm", "encoding", "development-tools"]
 
 [dependencies]
 base64 = "0.22.1"
