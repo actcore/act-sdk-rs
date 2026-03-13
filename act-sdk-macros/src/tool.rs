@@ -113,55 +113,53 @@ fn extract_config_type(ty: &Type) -> Option<Type> {
         Type::Reference(r) => &*r.elem,
         other => other,
     };
-    if let Type::Path(tp) = inner {
-        if let Some(seg) = tp.path.segments.last() {
-            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
-                    // Check if it's ()
-                    if let Type::Tuple(tuple) = t {
-                        if tuple.elems.is_empty() {
-                            return None;
-                        }
-                    }
-                    return Some(t.clone());
-                }
-            }
+    if let Type::Path(tp) = inner
+        && let Some(seg) = tp.path.segments.last()
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(t)) = args.args.first()
+    {
+        // Check if it's ()
+        if let Type::Tuple(tuple) = t
+            && tuple.elems.is_empty()
+        {
+            return None;
         }
+        return Some(t.clone());
     }
     None
 }
 
 /// Check if a type name looks like a user-defined struct (PascalCase, not a standard type).
 fn looks_like_struct_type(ty: &Type) -> bool {
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
-            let name = seg.ident.to_string();
-            // Standard types that are NOT user structs
-            let standard = [
-                "String",
-                "Vec",
-                "Option",
-                "bool",
-                "u8",
-                "u16",
-                "u32",
-                "u64",
-                "i8",
-                "i16",
-                "i32",
-                "i64",
-                "f32",
-                "f64",
-                "usize",
-                "isize",
-                "ActContext",
-            ];
-            if standard.contains(&name.as_str()) {
-                return false;
-            }
-            // Must start with uppercase
-            return name.starts_with(|c: char| c.is_uppercase());
+    if let Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+    {
+        let name = seg.ident.to_string();
+        // Standard types that are NOT user structs
+        let standard = [
+            "String",
+            "Vec",
+            "Option",
+            "bool",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "f32",
+            "f64",
+            "usize",
+            "isize",
+            "ActContext",
+        ];
+        if standard.contains(&name.as_str()) {
+            return false;
         }
+        // Must start with uppercase
+        return name.starts_with(|c: char| c.is_uppercase());
     }
     false
 }
@@ -198,14 +196,13 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
                 .iter()
                 .find(|a| a.path().is_ident("doc"))
                 .and_then(|a| {
-                    if let syn::Meta::NameValue(nv) = &a.meta {
-                        if let syn::Expr::Lit(syn::ExprLit {
+                    if let syn::Meta::NameValue(nv) = &a.meta
+                        && let syn::Expr::Lit(syn::ExprLit {
                             lit: syn::Lit::Str(s),
                             ..
                         }) = &nv.value
-                        {
-                            return Some(s.value().trim().to_string());
-                        }
+                    {
+                        return Some(s.value().trim().to_string());
                     }
                     None
                 });
@@ -253,17 +250,15 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
 /// Returns None if the return type isn't ActResult or Result.
 #[allow(dead_code)]
 pub fn extract_result_inner_type(ret: &syn::ReturnType) -> Option<Type> {
-    if let syn::ReturnType::Type(_, ty) = ret {
-        if let Type::Path(tp) = ty.as_ref() {
-            if let Some(seg) = tp.path.segments.last() {
-                if seg.ident == "ActResult" || seg.ident == "Result" {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(t)) = args.args.first() {
-                            return Some(t.clone());
-                        }
-                    }
-                }
-            }
+    if let syn::ReturnType::Type(_, ty) = ret
+        && let Type::Path(tp) = ty.as_ref()
+        && let Some(seg) = tp.path.segments.last()
+    {
+        if (seg.ident == "ActResult" || seg.ident == "Result")
+            && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+            && let Some(syn::GenericArgument::Type(t)) = args.args.first()
+        {
+            return Some(t.clone());
         }
     }
     None
