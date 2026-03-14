@@ -253,13 +253,11 @@ pub fn extract_result_inner_type(ret: &syn::ReturnType) -> Option<Type> {
     if let syn::ReturnType::Type(_, ty) = ret
         && let Type::Path(tp) = ty.as_ref()
         && let Some(seg) = tp.path.segments.last()
+        && (seg.ident == "ActResult" || seg.ident == "Result")
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(t)) = args.args.first()
     {
-        if (seg.ident == "ActResult" || seg.ident == "Result")
-            && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-            && let Some(syn::GenericArgument::Type(t)) = args.args.first()
-        {
-            return Some(t.clone());
-        }
+        return Some(t.clone());
     }
     None
 }
