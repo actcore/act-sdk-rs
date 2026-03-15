@@ -1,6 +1,7 @@
 mod component;
 mod tool;
 
+use darling::FromMeta;
 use proc_macro::TokenStream;
 
 /// Attribute macro for ACT component modules.
@@ -14,7 +15,7 @@ use proc_macro::TokenStream;
 /// - `name = "..."` (required) — Component name
 /// - `version = "..."` (required) — Component version
 /// - `description = "..."` (required) — Component description
-/// - `default_language = "..."` (optional, defaults to "en") — BCP 47 language tag
+/// - `default_language = "..."` (optional) — BCP 47 language tag
 ///
 /// # Example
 ///
@@ -35,16 +36,18 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro_attribute]
 pub fn act_component(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let attrs = match component::ComponentAttrs::parse(attr.into()) {
+    let attr_args = match darling::ast::NestedMeta::parse_meta_list(attr.into()) {
         Ok(a) => a,
-        Err(e) => return e.to_compile_error().into(),
+        Err(e) => return TokenStream::from(darling::Error::from(e).write_errors()),
     };
-
+    let attrs = match component::ComponentAttrs::from_list(&attr_args) {
+        Ok(a) => a,
+        Err(e) => return TokenStream::from(e.write_errors()),
+    };
     let module = match syn::parse::<syn::ItemMod>(item) {
         Ok(m) => m,
         Err(e) => return e.to_compile_error().into(),
     };
-
     match component::generate(attrs, &module) {
         Ok(tokens) => tokens.into(),
         Err(e) => e.to_compile_error().into(),

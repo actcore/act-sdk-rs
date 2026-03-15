@@ -13,12 +13,6 @@ fn default_prefix() -> String {
     "Hello".to_string()
 }
 
-#[derive(Deserialize, JsonSchema)]
-struct GreetArgs {
-    /// Name of the person to greet
-    name: String,
-}
-
 #[act_component(
     name = "config-example",
     version = "0.1.0",
@@ -28,13 +22,17 @@ mod component {
     use super::*;
 
     #[act_tool(description = "Greet with configured prefix")]
-    fn greet(args: GreetArgs, ctx: &mut ActContext<AppConfig>) -> ActResult<String> {
-        let config = ctx.config();
+    fn greet(
+        /// Name of the person to greet
+        name: String,
+        ctx: &mut ActContext<AppConfig>,
+    ) -> ActResult<String> {
+        let meta = ctx.metadata();
         Ok(format!(
             "{}, {}! (key: {}...)",
-            config.prefix,
-            args.name,
-            &config.api_key[..3.min(config.api_key.len())]
+            meta.prefix,
+            name,
+            &meta.api_key[..3.min(meta.api_key.len())]
         ))
     }
 }

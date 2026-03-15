@@ -16,3 +16,6 @@ proc-macro = true
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
+darling = "0.23"
+ciborium = "0.2"
+serde = { version = "1", features = ["derive"] }

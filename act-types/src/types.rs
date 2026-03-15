@@ -243,11 +243,6 @@ cbor_wrapper!(
     Args
 );
 
-cbor_wrapper!(
-    /// Component configuration as CBOR bytes.
-    Config
-);
-
 use crate::constants::*;
 
 // ── Error type ──
@@ -405,18 +400,5 @@ mod tests {
         let args = Args::from_json(&val).unwrap();
         let params: Params = args.deserialize().unwrap();
         assert_eq!(params.code, "hello");
-    }
-
-    #[test]
-    fn config_from_json_opt_none() {
-        assert!(Config::from_json_opt(&None).unwrap().is_none());
-    }
-
-    #[test]
-    fn config_from_json_opt_some() {
-        let val = json!({"key": "value"});
-        let config = Config::from_json_opt(&Some(val.clone())).unwrap().unwrap();
-        let decoded = config.to_json().unwrap();
-        assert_eq!(decoded, val);
     }
 }

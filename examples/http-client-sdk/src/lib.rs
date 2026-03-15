@@ -30,7 +30,7 @@ mod component {
     use super::*;
 
     #[act_tool(description = "Make an HTTP request")]
-    async fn fetch(args: FetchArgs) -> ActResult<serde_json::Value> {
+    async fn fetch(#[args] args: FetchArgs) -> ActResult<serde_json::Value> {
         let method = match args.method.as_str() {
             "GET" => Method::Get,
             "POST" => Method::Post,

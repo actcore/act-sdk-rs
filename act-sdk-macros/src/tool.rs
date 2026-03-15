@@ -1,3 +1,4 @@
+use darling::FromMeta;
 use syn::{FnArg, ItemFn, Pat, PatType, Type};
 
 /// Parsed information about a single `#[act_tool]` function.
@@ -17,10 +18,11 @@ pub struct ToolInfo {
     /// Whether it has a streaming ActContext parameter.
     pub has_context: bool,
     /// The config type inside ActContext<C> (None if no context or C is ()).
-    pub config_type: Option<Type>,
+    pub metadata_type: Option<Type>,
     /// Parsed argument info (excluding ActContext param).
     pub args: Vec<ToolArg>,
-    /// Whether arguments come from a single struct type.
+    /// If a parameter is marked with #[args], its type is used directly
+    /// for schema generation and deserialization (no hidden wrapper struct).
     pub struct_args: Option<Type>,
     /// Tool metadata flags.
     pub read_only: bool,
@@ -39,57 +41,20 @@ pub struct ToolArg {
 }
 
 /// Attributes parsed from #[act_tool(...)].
-#[derive(Debug, Default)]
+#[derive(Debug, Default, FromMeta)]
 pub struct ToolAttrs {
+    #[darling(default)]
     pub description: Option<String>,
+    #[darling(default)]
     pub read_only: bool,
+    #[darling(default)]
     pub idempotent: bool,
+    #[darling(default)]
     pub destructive: bool,
+    #[darling(default)]
     pub streaming: bool,
+    #[darling(default)]
     pub timeout_ms: Option<u64>,
-}
-
-impl ToolAttrs {
-    pub fn parse(attr: &syn::Attribute) -> syn::Result<Self> {
-        let mut result = ToolAttrs::default();
-
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("description") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                result.description = Some(lit.value());
-                Ok(())
-            } else if meta.path.is_ident("read_only") {
-                result.read_only = true;
-                Ok(())
-            } else if meta.path.is_ident("idempotent") {
-                result.idempotent = true;
-                Ok(())
-            } else if meta.path.is_ident("destructive") {
-                result.destructive = true;
-                Ok(())
-            } else if meta.path.is_ident("streaming") {
-                // streaming can be a flag or streaming = true
-                if meta.input.peek(syn::Token![=]) {
-                    let value = meta.value()?;
-                    let lit: syn::LitBool = value.parse()?;
-                    result.streaming = lit.value();
-                } else {
-                    result.streaming = true;
-                }
-                Ok(())
-            } else if meta.path.is_ident("timeout_ms") {
-                let value = meta.value()?;
-                let lit: syn::LitInt = value.parse()?;
-                result.timeout_ms = Some(lit.base10_parse()?);
-                Ok(())
-            } else {
-                Err(meta.error("unknown act_tool attribute"))
-            }
-        })?;
-
-        Ok(result)
-    }
 }
 
 /// Check if a type path looks like ActContext<T>.
@@ -108,7 +73,7 @@ fn is_act_context(ty: &Type) -> bool {
 
 /// Extract the type parameter from ActContext<T>.
 /// Returns None if it's ActContext<()> or just ActContext.
-fn extract_config_type(ty: &Type) -> Option<Type> {
+fn extract_metadata_type(ty: &Type) -> Option<Type> {
     let inner = match ty {
         Type::Reference(r) => &*r.elem,
         other => other,
@@ -129,58 +94,30 @@ fn extract_config_type(ty: &Type) -> Option<Type> {
     None
 }
 
-/// Check if a type name looks like a user-defined struct (PascalCase, not a standard type).
-fn looks_like_struct_type(ty: &Type) -> bool {
-    if let Type::Path(tp) = ty
-        && let Some(seg) = tp.path.segments.last()
-    {
-        let name = seg.ident.to_string();
-        // Standard types that are NOT user structs
-        let standard = [
-            "String",
-            "Vec",
-            "Option",
-            "bool",
-            "u8",
-            "u16",
-            "u32",
-            "u64",
-            "i8",
-            "i16",
-            "i32",
-            "i64",
-            "f32",
-            "f64",
-            "usize",
-            "isize",
-            "ActContext",
-        ];
-        if standard.contains(&name.as_str()) {
-            return false;
-        }
-        // Must start with uppercase
-        return name.starts_with(|c: char| c.is_uppercase());
-    }
-    false
-}
-
 /// Parse a function with #[act_tool] attributes into ToolInfo.
 pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
     let fn_ident = func.sig.ident.clone();
     let tool_name = fn_ident.to_string().replace('_', "-");
     let is_async = func.sig.asyncness.is_some();
 
-    // Collect parameters, identifying ActContext
+    // Collect parameters, identifying ActContext and #[args]
     let mut args = Vec::new();
     let mut has_context = false;
-    let mut config_type = None;
+    let mut metadata_type = None;
     let mut struct_args = None;
 
     for input in &func.sig.inputs {
         if let FnArg::Typed(PatType { pat, ty, attrs, .. }) = input {
             if is_act_context(ty) {
                 has_context = true;
-                config_type = extract_config_type(ty);
+                metadata_type = extract_metadata_type(ty);
+                continue;
+            }
+
+            // Check for #[args] attribute — marks this param as the args struct
+            let is_args_param = attrs.iter().any(|a| a.path().is_ident("args"));
+            if is_args_param {
+                struct_args = Some(ty.as_ref().clone());
                 continue;
             }
 
@@ -207,23 +144,12 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
                     None
                 });
 
-            // Check if this single param looks like a struct type
-            if looks_like_struct_type(ty) && func.sig.inputs.len() <= 2 {
-                // Could be struct-args style (1 struct + maybe ActContext)
-                struct_args = Some(ty.as_ref().clone());
-            }
-
             args.push(ToolArg {
                 name: param_name,
                 ty: ty.as_ref().clone(),
                 doc,
             });
         }
-    }
-
-    // If we have more than 1 non-context arg, it's individual params style
-    if args.len() > 1 {
-        struct_args = None;
     }
 
     let streaming = attrs.streaming;
@@ -235,7 +161,7 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
         description: attrs.description.unwrap_or_default(),
         is_async,
         has_context,
-        config_type,
+        metadata_type,
         args,
         struct_args,
         read_only: attrs.read_only,

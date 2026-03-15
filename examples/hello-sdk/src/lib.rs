@@ -1,11 +1,5 @@
 use act_sdk::prelude::*;
 
-#[derive(Deserialize, JsonSchema)]
-struct GreetArgs {
-    /// Name of the person to greet
-    name: String,
-}
-
 #[act_component(
     name = "hello-sdk",
     version = "0.1.0",
@@ -15,8 +9,11 @@ mod component {
     use super::*;
 
     #[act_tool(description = "Say hello to someone", read_only)]
-    fn greet(args: GreetArgs) -> ActResult<String> {
-        Ok(format!("Hello, {}!", args.name))
+    fn greet(
+        /// Name of the person to greet
+        name: String,
+    ) -> ActResult<String> {
+        Ok(format!("Hello, {name}!"))
     }
 
     #[act_tool(description = "List supported greetings", read_only)]
@@ -26,12 +23,12 @@ mod component {
 
     #[act_tool(description = "Count from 1 to N", streaming)]
     async fn count(
-        #[doc = "Number to count to"] n: u32,
+        /// Number to count to
+        n: u32,
         ctx: &mut ActContext<()>,
     ) -> ActResult<()> {
         for i in 1..=n {
-            ctx.send_progress(i as u64, n as u64, format!("Count: {i}"))
-                .await?;
+            ctx.send_text(format!("Count: {i}"));
         }
         Ok(())
     }

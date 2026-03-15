@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// ACT-HTTP protocol version.
-pub const PROTOCOL_VERSION: &str = "0.1";
+pub const PROTOCOL_VERSION: &str = "0.2";
 
 /// HTTP header name for the protocol version.
 pub const HEADER_PROTOCOL_VERSION: &str = "ACT-Protocol-Version";
@@ -51,11 +51,18 @@ pub struct ListToolsResponse {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Request body for `POST /tools` and `QUERY /tools` (config only).
+/// Request body for `POST /metadata-schema`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ConfigRequest {
+pub struct MetadataSchemaRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub config: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Request body for `POST /tools` and `QUERY /tools`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MetadataRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Request body for `POST /tools/{name}`.
@@ -63,7 +70,7 @@ pub struct ConfigRequest {
 pub struct ToolCallRequest {
     pub arguments: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub config: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// A content part in a tool response.

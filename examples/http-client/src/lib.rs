@@ -44,29 +44,11 @@ struct HttpClient;
 export!(HttpClient);
 
 impl Guest for HttpClient {
-    fn get_info() -> ComponentInfo {
-        ComponentInfo {
-            name: "http-client".to_string(),
-            version: "0.1.0".to_string(),
-            default_language: "en".to_string(),
-            description: LocalizedString::Plain("HTTP client ACT component".to_string()),
-            capabilities: vec![Capability {
-                id: "wasi:http/client".to_string(),
-                required: true,
-                description: Some(LocalizedString::Plain(
-                    "Make outbound HTTP requests".to_string(),
-                )),
-                metadata: vec![],
-            }],
-            metadata: vec![],
-        }
-    }
-
-    fn get_config_schema() -> Option<String> {
+    async fn get_metadata_schema(_metadata: Vec<(String, Vec<u8>)>) -> Option<String> {
         None
     }
 
-    async fn list_tools(_config: Option<Vec<u8>>) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, ToolError> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
@@ -88,7 +70,6 @@ impl Guest for HttpClient {
     }
 
     async fn call_tool(
-        _config: Option<Vec<u8>>,
         call: ToolCall,
     ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
         let (mut writer, reader) = wit_stream::new::<StreamEvent>();

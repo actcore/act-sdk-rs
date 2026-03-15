@@ -1,65 +1,18 @@
-use proc_macro2::TokenStream;
+use darling::FromMeta;
+use proc_macro2::{Literal, TokenStream};
 use quote::{format_ident, quote};
 use syn::{Item, ItemMod};
 
 use crate::tool::{self, ToolAttrs, ToolInfo};
 
 /// Attributes parsed from #[act_component(...)].
-#[derive(Debug)]
+#[derive(Debug, FromMeta)]
 pub struct ComponentAttrs {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub default_language: String,
-}
-
-impl ComponentAttrs {
-    pub fn parse(attr: proc_macro2::TokenStream) -> syn::Result<Self> {
-        let mut name = None;
-        let mut version = None;
-        let mut description = None;
-        let mut default_language = "en".to_string();
-
-        let parser = syn::meta::parser(|meta| {
-            if meta.path.is_ident("name") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                name = Some(lit.value());
-                Ok(())
-            } else if meta.path.is_ident("version") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                version = Some(lit.value());
-                Ok(())
-            } else if meta.path.is_ident("description") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                description = Some(lit.value());
-                Ok(())
-            } else if meta.path.is_ident("default_language") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                default_language = lit.value();
-                Ok(())
-            } else {
-                Err(meta.error("unknown act_component attribute"))
-            }
-        });
-
-        syn::parse::Parser::parse2(parser, attr)?;
-
-        Ok(ComponentAttrs {
-            name: name
-                .ok_or_else(|| syn::Error::new(proc_macro2::Span::call_site(), "missing `name`"))?,
-            version: version.ok_or_else(|| {
-                syn::Error::new(proc_macro2::Span::call_site(), "missing `version`")
-            })?,
-            description: description.ok_or_else(|| {
-                syn::Error::new(proc_macro2::Span::call_site(), "missing `description`")
-            })?,
-            default_language,
-        })
-    }
+    #[darling(default)]
+    pub default_language: Option<String>,
 }
 
 /// Main code generation for #[act_component].
@@ -73,7 +26,23 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     let comp_name = &attrs.name;
     let comp_version = &attrs.version;
     let comp_description = &attrs.description;
-    let default_lang = &attrs.default_language;
+    let default_lang = attrs.default_language.as_deref().unwrap_or("en");
+
+    // Generate CBOR-encoded `act:component` custom section at compile time.
+    let act_component_cbor = gen_component_section_cbor(
+        comp_name,
+        comp_version,
+        comp_description,
+        &attrs.default_language,
+    );
+    let cbor_len = act_component_cbor.len();
+    let cbor_literal = Literal::byte_string(&act_component_cbor);
+
+    // Standard WASM metadata sections (plain UTF-8 strings).
+    let version_len = comp_version.len();
+    let version_literal = Literal::byte_string(comp_version.as_bytes());
+    let description_len = comp_description.len();
+    let description_literal = Literal::byte_string(comp_description.as_bytes());
 
     // Generate tool definition entries for list_tools
     let tool_defs = tools.iter().map(|t| gen_tool_definition(t, default_lang));
@@ -81,18 +50,18 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Generate call_tool match arms
     let call_arms = tools.iter().map(|t| gen_call_arm(t, default_lang));
 
-    // Generate hidden arg structs for individual-params style tools
+    // Generate hidden arg structs for tools with individual params (not #[args])
     let arg_structs = tools
         .iter()
         .filter(|t| t.struct_args.is_none() && !t.args.is_empty())
         .map(gen_arg_struct);
 
-    // Generate config schema expression
-    let config_schema_expr =
-        if let Some(config_type) = tools.iter().find_map(|t| t.config_type.as_ref()) {
+    // Generate metadata schema expression
+    let metadata_schema_expr =
+        if let Some(metadata_type) = tools.iter().find_map(|t| t.metadata_type.as_ref()) {
             quote! {
                 Some(::act_sdk::__private::serde_json::to_string(
-                    &::act_sdk::__private::schemars::schema_for!(#config_type)
+                    &::act_sdk::__private::schemars::schema_for!(#metadata_type)
                 ).unwrap_or_else(|_| r#"{"type":"object"}"#.to_string()))
             }
         } else {
@@ -107,6 +76,23 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             world: "component-world",
             generate_all,
         });
+
+        // Standard WASM metadata custom sections (OCI annotations).
+        // Compatible with wasm-tools, wkg, wa.dev, and the WASM component ecosystem.
+        // SAFETY: link_section places data in named WASM custom sections; no executable code.
+        #[unsafe(link_section = "version")]
+        #[used]
+        static __ACT_VERSION_SECTION: [u8; #version_len] = *#version_literal;
+
+        #[unsafe(link_section = "description")]
+        #[used]
+        static __ACT_DESCRIPTION_SECTION: [u8; #description_len] = *#description_literal;
+
+        // `act:component` custom section — CBOR-encoded ACT-specific metadata.
+        // Contains fields not covered by standard WASM metadata (e.g. std:default-language).
+        #[unsafe(link_section = "act:component")]
+        #[used]
+        static __ACT_COMPONENT_SECTION: [u8; #cbor_len] = *#cbor_literal;
 
         // User-defined items from the module body
         #(#user_items)*
@@ -139,23 +125,14 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         export!(__ActComponent);
 
         impl exports::act::core::tool_provider::Guest for __ActComponent {
-            fn get_info() -> act::core::types::ComponentInfo {
-                act::core::types::ComponentInfo {
-                    name: #comp_name.to_string(),
-                    version: #comp_version.to_string(),
-                    default_language: #default_lang.to_string(),
-                    description: act::core::types::LocalizedString::Plain(#comp_description.to_string()),
-                    capabilities: vec![],
-                    metadata: vec![],
-                }
-            }
-
-            fn get_config_schema() -> Option<String> {
-                #config_schema_expr
+            async fn get_metadata_schema(
+                _metadata: Vec<(String, Vec<u8>)>,
+            ) -> Option<String> {
+                #metadata_schema_expr
             }
 
             async fn list_tools(
-                _config: Option<Vec<u8>>,
+                _metadata: Vec<(String, Vec<u8>)>,
             ) -> Result<act::core::types::ListToolsResponse, act::core::types::ToolError> {
                 Ok(act::core::types::ListToolsResponse {
                     metadata: vec![],
@@ -166,23 +143,45 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             }
 
             async fn call_tool(
-                _config: Option<Vec<u8>>,
                 call: act::core::types::ToolCall,
             ) -> wit_bindgen::rt::async_support::StreamReader<act::core::types::StreamEvent> {
-                let (mut writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
+                let (mut __wit_writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
 
+                // Two channels: buffered (unbounded) and direct (zero-capacity backpressure)
+                let (__buffered_tx, __buffered_rx) = ::act_sdk::__private::async_channel::unbounded::<::act_sdk::context::RawStreamEvent>();
+                let (__direct_tx, __direct_rx) = ::act_sdk::__private::async_channel::bounded::<::act_sdk::context::RawStreamEvent>(0);
+
+                // Bridge task: reads from both channels, writes to WIT stream
+                wit_bindgen::spawn(async move {
+                    loop {
+                        // Prioritize direct (backpressure) channel, fall back to buffered
+                        let event = ::act_sdk::__private::futures_lite::future::or(
+                            __direct_rx.recv(),
+                            __buffered_rx.recv(),
+                        ).await;
+                        match event {
+                            Ok(raw) => {
+                                let wit_event = __raw_to_wit(raw);
+                                let _ = __wit_writer.write_all(vec![wit_event]).await;
+                            }
+                            Err(_) => break, // Both channels closed
+                        }
+                    }
+                });
+
+                // Tool task: runs user function
                 wit_bindgen::spawn(async move {
                     let __default_lang = #default_lang;
                     match call.name.as_str() {
                         #(#call_arms)*
                         __other => {
-                            let _ = writer.write_all(vec![
-                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                            let _ = __buffered_tx.try_send(
+                                ::act_sdk::context::RawStreamEvent::Error {
                                     kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
-                                    message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
-                                    metadata: vec![],
-                                })
-                            ]).await;
+                                    message: format!("Tool '{}' not found", __other),
+                                    default_language: __default_lang.to_string(),
+                                }
+                            );
                         }
                     }
                 });
@@ -206,7 +205,7 @@ fn extract_tools(module: &ItemMod) -> syn::Result<Vec<ToolInfo>> {
                 let tool_attr = func.attrs.iter().find(|a| a.path().is_ident("act_tool"));
 
                 if let Some(attr) = tool_attr {
-                    let attrs = ToolAttrs::parse(attr)?;
+                    let attrs = ToolAttrs::from_meta(&attr.meta).map_err(syn::Error::from)?;
                     let info = tool::parse_tool_fn(func, attrs)?;
                     tools.push(info);
                 }
@@ -230,10 +229,12 @@ fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
                     // Strip #[act_tool] attribute but keep the function
                     let mut clean_func = func.clone();
                     clean_func.attrs.retain(|a| !a.path().is_ident("act_tool"));
-                    // Strip #[doc] attributes from function parameters
+                    // Strip #[doc] and #[args] attributes from function parameters
                     for input in &mut clean_func.sig.inputs {
                         if let syn::FnArg::Typed(pat_type) = input {
-                            pat_type.attrs.retain(|a| !a.path().is_ident("doc"));
+                            pat_type.attrs.retain(|a| {
+                                !a.path().is_ident("doc") && !a.path().is_ident("args")
+                            });
                         }
                     }
                     items.push(quote! { #clean_func });
@@ -276,7 +277,7 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
     // Generate JSON Schema for parameters
     let schema_expr = if let Some(struct_type) = &tool.struct_args {
-        // Struct args: use schemars on the struct type
+        // #[args] param: use its type directly
         quote! {
             {
                 let schema = ::act_sdk::__private::schemars::schema_for!(#struct_type);
@@ -285,7 +286,6 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             }
         }
     } else if tool.args.is_empty() {
-        // No args
         quote! { r#"{"type":"object","properties":{}}"#.to_string() }
     } else {
         // Individual params: use generated hidden struct
@@ -345,18 +345,18 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
     // Determine how to deserialize and call
     let (deser_code, call_expr) = if let Some(struct_type) = &tool.struct_args {
-        // Struct args style
+        // #[args] param: deserialize directly into the struct type
         let deser = quote! {
             let __args: #struct_type = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                    let _ = __buffered_tx.try_send(
+                        ::act_sdk::context::RawStreamEvent::Error {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
-                            metadata: vec![],
-                        })
-                    ]).await;
+                            message: format!("Failed to deserialize arguments: {}", e),
+                            default_language: __default_lang.to_string(),
+                        }
+                    );
                     return;
                 }
             };
@@ -378,7 +378,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         };
         (quote! {}, call)
     } else {
-        // Individual params style: deserialize into hidden struct, extract fields
+        // Individual params: deserialize into hidden struct, extract fields
         let struct_name = gen_args_struct_ident(fn_ident);
         let field_names: Vec<_> = tool
             .args
@@ -390,13 +390,13 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             let __args_struct: #struct_name = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                    let _ = __buffered_tx.try_send(
+                        ::act_sdk::context::RawStreamEvent::Error {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
-                            metadata: vec![],
-                        })
-                    ]).await;
+                            message: format!("Failed to deserialize arguments: {}", e),
+                            default_language: __default_lang.to_string(),
+                        }
+                    );
                     return;
                 }
             };
@@ -420,105 +420,58 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
     // Context creation (if needed)
     let ctx_setup = if tool.has_context {
-        if let Some(config_type) = &tool.config_type {
+        if let Some(metadata_type) = &tool.metadata_type {
             quote! {
-                let __config: #config_type = match _config.as_deref() {
-                    Some(bytes) => match ::act_sdk::cbor::from_cbor(bytes) {
+                let __metadata_val: #metadata_type = {
+                    let mut __map = ::act_sdk::__private::serde_json::Map::new();
+                    for (k, v) in &call.metadata {
+                        if let Ok(val) = ::act_sdk::cbor::from_cbor::<::act_sdk::__private::serde_json::Value>(v) {
+                            __map.insert(k.clone(), val);
+                        }
+                    }
+                    let __metadata_json = ::act_sdk::__private::serde_json::Value::Object(__map);
+                    match ::act_sdk::__private::serde_json::from_value::<#metadata_type>(__metadata_json) {
                         Ok(v) => v,
                         Err(e) => {
-                            let _ = writer.write_all(vec![
-                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                            let _ = __buffered_tx.try_send(
+                                ::act_sdk::context::RawStreamEvent::Error {
                                     kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                    message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize config: {}", e)),
-                                    metadata: vec![],
-                                })
-                            ]).await;
+                                    message: format!("Failed to deserialize metadata: {}", e),
+                                    default_language: __default_lang.to_string(),
+                                }
+                            );
                             return;
                         }
-                    },
-                    None => {
-                        let _ = writer.write_all(vec![
-                            act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                message: act::core::types::LocalizedString::Plain("Config required but not provided".to_string()),
-                                metadata: vec![],
-                            })
-                        ]).await;
-                        return;
                     }
                 };
-                let mut __ctx = ::act_sdk::ActContext::__new(__config, __default_lang.to_string());
+                let mut __ctx = ::act_sdk::ActContext::__new(__metadata_val, __buffered_tx.clone(), __direct_tx.clone());
             }
         } else {
             quote! {
-                let mut __ctx = ::act_sdk::ActContext::__new((), __default_lang.to_string());
+                let mut __ctx = ::act_sdk::ActContext::__new((), __buffered_tx.clone(), __direct_tx.clone());
             }
         }
     } else {
         quote! {}
     };
 
-    // Post-call: drain context events + handle result
-    let post_call = if tool.has_context {
-        quote! {
-            match __result {
-                Ok(__val) => {
-                    // Drain buffered context events
-                    let __ctx_events = __ctx.__take_events();
-                    let mut __wit_events: Vec<act::core::types::StreamEvent> = __ctx_events
-                        .into_iter()
-                        .map(|e| __raw_to_wit(e))
-                        .collect();
-
-                    // Add response events
-                    use ::act_sdk::IntoResponse;
-                    let __response_events = __val.into_stream_events(__default_lang);
-                    __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
-
-                    if !__wit_events.is_empty() {
-                        let _ = writer.write_all(__wit_events).await;
-                    }
-                }
-                Err(__err) => {
-                    // Still drain any buffered events before the error
-                    let __ctx_events = __ctx.__take_events();
-                    let mut __wit_events: Vec<act::core::types::StreamEvent> = __ctx_events
-                        .into_iter()
-                        .map(|e| __raw_to_wit(e))
-                        .collect();
-
-                    __wit_events.push(act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                        kind: __err.kind.clone(),
-                        message: act::core::types::LocalizedString::Plain(__err.message.clone()),
-                        metadata: vec![],
-                    }));
-                    let _ = writer.write_all(__wit_events).await;
+    // Post-call: send result events via buffered channel
+    let post_call = quote! {
+        match __result {
+            Ok(__val) => {
+                use ::act_sdk::IntoResponse;
+                for event in __val.into_stream_events(__default_lang) {
+                    let _ = __buffered_tx.try_send(event);
                 }
             }
-        }
-    } else {
-        quote! {
-            match __result {
-                Ok(__val) => {
-                    use ::act_sdk::IntoResponse;
-                    let __raw_events = __val.into_stream_events(__default_lang);
-                    let __wit_events: Vec<act::core::types::StreamEvent> = __raw_events
-                        .into_iter()
-                        .map(|e| __raw_to_wit(e))
-                        .collect();
-                    if !__wit_events.is_empty() {
-                        let _ = writer.write_all(__wit_events).await;
+            Err(__err) => {
+                let _ = __buffered_tx.try_send(
+                    ::act_sdk::context::RawStreamEvent::Error {
+                        kind: __err.kind.clone(),
+                        message: __err.message.clone(),
+                        default_language: __default_lang.to_string(),
                     }
-                }
-                Err(__err) => {
-                    let _ = writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                            kind: __err.kind.clone(),
-                            message: act::core::types::LocalizedString::Plain(__err.message.clone()),
-                            metadata: vec![],
-                        })
-                    ]).await;
-                }
+                );
             }
         }
     };
@@ -547,6 +500,43 @@ fn gen_args_struct_ident(fn_ident: &syn::Ident) -> syn::Ident {
         })
         .collect::<String>();
     format_ident!("__{}Args", pascal)
+}
+
+/// CBOR-serializable struct for the `act:component` custom section.
+///
+/// Name, version, description are stored in standard WASM metadata sections
+/// (component-name, version, description) — not duplicated here.
+#[derive(serde::Serialize)]
+struct ActComponentSection {
+    #[serde(rename = "std:name")]
+    name: String,
+    #[serde(rename = "std:version")]
+    version: String,
+    #[serde(rename = "std:description")]
+    description: String,
+    #[serde(
+        rename = "std:default-language",
+        skip_serializing_if = "Option::is_none"
+    )]
+    default_language: Option<String>,
+}
+
+/// Generate CBOR bytes for the `act:component` custom section.
+fn gen_component_section_cbor(
+    name: &str,
+    version: &str,
+    description: &str,
+    default_language: &Option<String>,
+) -> Vec<u8> {
+    let section = ActComponentSection {
+        name: name.to_string(),
+        version: version.to_string(),
+        description: description.to_string(),
+        default_language: default_language.clone(),
+    };
+    let mut buf = Vec::new();
+    ciborium::into_writer(&section, &mut buf).expect("CBOR encoding failed");
+    buf
 }
 
 /// Generate a hidden #[derive(Deserialize, JsonSchema)] struct for individual-params tools.
