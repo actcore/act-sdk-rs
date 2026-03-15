@@ -10,8 +10,8 @@ keywords = ["act", "wasm", "component-model", "mcp", "sdk"]
 categories = ["wasm", "development-tools"]
 
 [dependencies]
-act-sdk-macros = { version = "0.2.0", path = "../act-sdk-macros" }
-act-types = { version = "0.2.0", path = "../act-types" }
+act-sdk-macros = { version = "0.2.1", path = "../act-sdk-macros" }
+act-types = { version = "0.2.1", path = "../act-types" }
 wit-bindgen = { version = "0.53", features = ["async-spawn"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

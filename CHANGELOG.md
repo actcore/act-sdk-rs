@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-15
+
+### Changed
+
+- Unified `ComponentInfo` type across SDK and host — single `Serialize + Deserialize` struct with `#[non_exhaustive]`, capabilities, and flattened extra metadata
+- Complete well-known constants registry (`constants.rs`) — all 34 `std:` keys from the spec
+- HTTP types use `serde_with::skip_serializing_none` instead of per-field attributes
+
+### Removed
+
+- `ServerInfo` from HTTP types — replaced by `ComponentInfo`
+- `Args` type and `cbor_wrapper!` macro (unused)
+- Borrowed `From<&serde_json::Value>` for `Metadata` — only consuming conversion remains
+
 ## [0.2.0] - 2026-03-15
 
 Breaking release aligned with ACT spec v0.2.0 — `config` replaced by `metadata` throughout.
@@ -45,5 +59,6 @@ Initial release of the ACT Rust SDK — a toolkit for building WebAssembly compo
 - E2E test infrastructure for components
 - Release pipeline with git-cliff changelog generation
 
+[0.2.1]: https://github.com/actcore/act-sdk-rs/compare/0.2.0..0.2.1
 [0.2.0]: https://github.com/actcore/act-sdk-rs/compare/0.1.0..0.2.0
 [0.1.0]: https://github.com/actcore/act-sdk-rs/tree/0.1.0
