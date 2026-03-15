@@ -147,41 +147,18 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             ) -> wit_bindgen::rt::async_support::StreamReader<act::core::types::StreamEvent> {
                 let (mut __wit_writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
 
-                // Two channels: buffered (unbounded) and direct (zero-capacity backpressure)
-                let (__buffered_tx, __buffered_rx) = ::act_sdk::__private::async_channel::unbounded::<::act_sdk::context::RawStreamEvent>();
-                let (__direct_tx, __direct_rx) = ::act_sdk::__private::async_channel::bounded::<::act_sdk::context::RawStreamEvent>(0);
-
-                // Bridge task: reads from both channels, writes to WIT stream
-                wit_bindgen::spawn(async move {
-                    loop {
-                        // Prioritize direct (backpressure) channel, fall back to buffered
-                        let event = ::act_sdk::__private::futures_lite::future::or(
-                            __direct_rx.recv(),
-                            __buffered_rx.recv(),
-                        ).await;
-                        match event {
-                            Ok(raw) => {
-                                let wit_event = __raw_to_wit(raw);
-                                let _ = __wit_writer.write_all(vec![wit_event]).await;
-                            }
-                            Err(_) => break, // Both channels closed
-                        }
-                    }
-                });
-
-                // Tool task: runs user function
                 wit_bindgen::spawn(async move {
                     let __default_lang = #default_lang;
                     match call.name.as_str() {
                         #(#call_arms)*
                         __other => {
-                            let _ = __buffered_tx.try_send(
-                                ::act_sdk::context::RawStreamEvent::Error {
+                            let _ = __wit_writer.write_all(vec![
+                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
                                     kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
-                                    message: format!("Tool '{}' not found", __other),
-                                    default_language: __default_lang.to_string(),
-                                }
-                            );
+                                    message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
+                                    metadata: vec![],
+                                })
+                            ]).await;
                         }
                     }
                 });
@@ -350,13 +327,13 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             let __args: #struct_type = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = __buffered_tx.try_send(
-                        ::act_sdk::context::RawStreamEvent::Error {
+                    let _ = __wit_writer.write_all(vec![
+                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: format!("Failed to deserialize arguments: {}", e),
-                            default_language: __default_lang.to_string(),
-                        }
-                    );
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
+                            metadata: vec![],
+                        })
+                    ]).await;
                     return;
                 }
             };
@@ -390,13 +367,13 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             let __args_struct: #struct_name = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = __buffered_tx.try_send(
-                        ::act_sdk::context::RawStreamEvent::Error {
+                    let _ = __wit_writer.write_all(vec![
+                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: format!("Failed to deserialize arguments: {}", e),
-                            default_language: __default_lang.to_string(),
-                        }
-                    );
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
+                            metadata: vec![],
+                        })
+                    ]).await;
                     return;
                 }
             };
@@ -433,45 +410,79 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     match ::act_sdk::__private::serde_json::from_value::<#metadata_type>(__metadata_json) {
                         Ok(v) => v,
                         Err(e) => {
-                            let _ = __buffered_tx.try_send(
-                                ::act_sdk::context::RawStreamEvent::Error {
+                            let _ = __wit_writer.write_all(vec![
+                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
                                     kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                    message: format!("Failed to deserialize metadata: {}", e),
-                                    default_language: __default_lang.to_string(),
-                                }
-                            );
+                                    message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize metadata: {}", e)),
+                                    metadata: vec![],
+                                })
+                            ]).await;
                             return;
                         }
                     }
                 };
-                let mut __ctx = ::act_sdk::ActContext::__new(__metadata_val, __buffered_tx.clone(), __direct_tx.clone());
+                let mut __ctx = ::act_sdk::ActContext::__new(__metadata_val);
             }
         } else {
             quote! {
-                let mut __ctx = ::act_sdk::ActContext::__new((), __buffered_tx.clone(), __direct_tx.clone());
+                let mut __ctx = ::act_sdk::ActContext::__new(());
             }
         }
     } else {
         quote! {}
     };
 
-    // Post-call: send result events via buffered channel
-    let post_call = quote! {
-        match __result {
-            Ok(__val) => {
-                use ::act_sdk::IntoResponse;
-                for event in __val.into_stream_events(__default_lang) {
-                    let _ = __buffered_tx.try_send(event);
+    // Post-call: drain context events + handle result, write to WIT stream
+    let post_call = if tool.has_context {
+        quote! {
+            // Drain buffered context events
+            let __ctx_events = __ctx.__take_events();
+            let mut __wit_events: Vec<act::core::types::StreamEvent> = __ctx_events
+                .into_iter()
+                .map(|e| __raw_to_wit(e))
+                .collect();
+
+            match __result {
+                Ok(__val) => {
+                    use ::act_sdk::IntoResponse;
+                    let __response_events = __val.into_stream_events(__default_lang);
+                    __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
+                }
+                Err(__err) => {
+                    __wit_events.push(act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                        kind: __err.kind.clone(),
+                        message: act::core::types::LocalizedString::Plain(__err.message.clone()),
+                        metadata: vec![],
+                    }));
                 }
             }
-            Err(__err) => {
-                let _ = __buffered_tx.try_send(
-                    ::act_sdk::context::RawStreamEvent::Error {
-                        kind: __err.kind.clone(),
-                        message: __err.message.clone(),
-                        default_language: __default_lang.to_string(),
+            if !__wit_events.is_empty() {
+                let _ = __wit_writer.write_all(__wit_events).await;
+            }
+        }
+    } else {
+        quote! {
+            match __result {
+                Ok(__val) => {
+                    use ::act_sdk::IntoResponse;
+                    let __raw_events = __val.into_stream_events(__default_lang);
+                    let __wit_events: Vec<act::core::types::StreamEvent> = __raw_events
+                        .into_iter()
+                        .map(|e| __raw_to_wit(e))
+                        .collect();
+                    if !__wit_events.is_empty() {
+                        let _ = __wit_writer.write_all(__wit_events).await;
                     }
-                );
+                }
+                Err(__err) => {
+                    let _ = __wit_writer.write_all(vec![
+                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                            kind: __err.kind.clone(),
+                            message: act::core::types::LocalizedString::Plain(__err.message.clone()),
+                            metadata: vec![],
+                        })
+                    ]).await;
+                }
             }
         }
     };

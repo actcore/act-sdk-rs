@@ -22,8 +22,6 @@ pub use act_types::constants;
 #[doc(hidden)]
 pub mod __private {
     pub use act_types::cbor as ciborium_compat;
-    pub use async_channel;
-    pub use futures_lite;
     pub use schemars;
     pub use serde;
     pub use serde_json;

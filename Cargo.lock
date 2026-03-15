@@ -4,12 +4,10 @@ version = 4
 
 [[package]]
 name = "act-sdk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "act-sdk-macros",
  "act-types",
- "async-channel",
- "futures-lite",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -18,7 +16,7 @@ dependencies = [
 
 [[package]]
 name = "act-sdk-macros"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "act-types",
  "ciborium",
@@ -31,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "act-types"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64",
  "ciborium",
@@ -54,18 +52,6 @@ name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
-
-[[package]]
-name = "async-channel"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "924ed96dd52d1b75e9c1a3e6275715fd320f5f9439fb5a4a11fa51f4221158d2"
-dependencies = [
- "concurrent-queue",
- "event-listener-strategy",
- "futures-core",
- "pin-project-lite",
-]
 
 [[package]]
 name = "autocfg"
@@ -147,17 +133,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "concurrent-queue"
-version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "config-sdk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
@@ -173,19 +150,13 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "counter"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ciborium",
  "serde",
  "serde_json",
  "wit-bindgen 0.53.1",
 ]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crunchy"
@@ -261,33 +232,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "event-listener"
-version = "5.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13b66accf52311f30a0db42147dadea9850cb48cd070028831ae5f5d4b856ab"
-dependencies = [
- "concurrent-queue",
- "parking",
- "pin-project-lite",
-]
-
-[[package]]
-name = "event-listener-strategy"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
-dependencies = [
- "event-listener",
- "pin-project-lite",
-]
-
-[[package]]
-name = "fastrand"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -361,19 +305,6 @@ name = "futures-io"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cecba35d7ad927e23624b22ad55235f2239cfa44fd10428eecbeba6d6a717718"
-
-[[package]]
-name = "futures-lite"
-version = "2.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad"
-dependencies = [
- "fastrand",
- "futures-core",
- "futures-io",
- "parking",
- "pin-project-lite",
-]
 
 [[package]]
 name = "futures-macro"
@@ -458,7 +389,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-sdk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
@@ -468,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "hello-world"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ciborium",
  "serde",
@@ -484,7 +415,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http-client"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ciborium",
  "serde",
@@ -496,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "http-client-sdk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
@@ -734,12 +665,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "parking"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "percent-encoding"
