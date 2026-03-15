@@ -4,6 +4,7 @@
 //! by servers (act-host), clients (act-bridge), and SDKs alike.
 
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 /// ACT-HTTP protocol version.
 pub const PROTOCOL_VERSION: &str = "0.2";
@@ -11,92 +12,76 @@ pub const PROTOCOL_VERSION: &str = "0.2";
 /// HTTP header name for the protocol version.
 pub const HEADER_PROTOCOL_VERSION: &str = "ACT-Protocol-Version";
 
-/// Server metadata returned by `GET /info`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerInfo {
-    pub name: String,
-    pub version: String,
-    pub description: String,
-    pub default_language: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capabilities: Option<Vec<Capability>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
-}
-
-/// A server capability declaration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capability {
-    pub id: String,
-    pub required: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
 /// Tool definition returned in `ListToolsResponse`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
     pub parameters_schema: serde_json::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Response from `POST /tools`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListToolsResponse {
     pub tools: Vec<ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Request body for `POST /metadata-schema`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MetadataSchemaRequest {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Request body for `POST /tools` and `QUERY /tools`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MetadataRequest {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Request body for `POST /tools/{name}`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallRequest {
     pub arguments: serde_json::Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// A content part in a tool response.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentPart {
     pub data: serde_json::Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub mime_type: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Response from `POST /tools/{name}`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallResponse {
     pub content: Vec<ContentPart>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Error object in error responses.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolError {
     pub kind: String,
     pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -107,21 +92,23 @@ pub struct ErrorResponse {
 }
 
 /// Resource info returned by `POST /resources`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceInfo {
     pub uri: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub mime_type: Option<String>,
     pub description: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 
 /// Response from `POST /resources`.
+#[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListResourcesResponse {
     pub resources: Vec<ResourceInfo>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
 

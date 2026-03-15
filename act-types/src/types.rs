@@ -151,14 +151,26 @@ impl Metadata {
         self.0.iter()
     }
 
-    /// Convert to a JSON object. Returns `None` if empty.
-    pub fn to_json(&self) -> Option<serde_json::Value> {
-        if self.0.is_empty() {
-            return None;
+    /// Number of entries.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+/// Convert from a JSON object value. Non-object values produce empty metadata.
+impl From<serde_json::Value> for Metadata {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Object(map) => Self(map.into_iter().collect()),
+            _ => Self::new(),
         }
-        let map: serde_json::Map<String, serde_json::Value> =
-            self.0.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        Some(serde_json::Value::Object(map))
+    }
+}
+
+/// Convert to a JSON object value (consuming).
+impl From<Metadata> for serde_json::Value {
+    fn from(m: Metadata) -> Self {
+        serde_json::Value::Object(m.0.into_iter().collect())
     }
 }
 
@@ -185,65 +197,66 @@ impl From<Metadata> for Vec<(String, Vec<u8>)> {
     }
 }
 
-// ── CBOR byte wrappers ──
+use crate::constants::*;
 
-/// Shared implementation for CBOR byte wrapper types.
-macro_rules! cbor_wrapper {
-    ($(#[$meta:meta])* $name:ident) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone)]
-        pub struct $name(Vec<u8>);
+// ── Component info (act:component custom section) ──
 
-        impl $name {
-            /// Encode a JSON value to CBOR.
-            pub fn from_json(value: &serde_json::Value) -> Result<Self, cbor::CborError> {
-                cbor::json_to_cbor(value).map(Self)
-            }
-
-            /// Convert from an optional JSON value.
-            pub fn from_json_opt(value: &Option<serde_json::Value>) -> Result<Option<Self>, cbor::CborError> {
-                match value {
-                    Some(val) => Self::from_json(val).map(Some),
-                    None => Ok(None),
-                }
-            }
-
-            /// Get the raw CBOR bytes.
-            pub fn as_bytes(&self) -> &[u8] {
-                &self.0
-            }
-
-            /// Decode to a JSON value.
-            pub fn to_json(&self) -> Result<serde_json::Value, cbor::CborError> {
-                cbor::cbor_to_json(&self.0)
-            }
-
-            /// Deserialize into a typed value.
-            pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, cbor::CborError> {
-                cbor::from_cbor(&self.0)
-            }
-        }
-
-        impl From<Vec<u8>> for $name {
-            fn from(v: Vec<u8>) -> Self {
-                Self(v)
-            }
-        }
-
-        impl From<$name> for Vec<u8> {
-            fn from(w: $name) -> Self {
-                w.0
-            }
-        }
-    };
+/// A capability required or optionally used by the component.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ComponentCapability {
+    pub id: String,
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
-cbor_wrapper!(
-    /// Tool arguments as CBOR bytes.
-    Args
-);
+/// Component metadata stored in the `act:component` WASM custom section (CBOR-encoded).
+///
+/// Used by SDK macros (serialization) and host (deserialization).
+/// Standard WASM metadata fields (`version`, `description`) may also be read
+/// from their respective custom sections as fallback.
+///
+/// Extra keys (not matching `std:*` fields) are collected into `metadata`.
+#[non_exhaustive]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ComponentInfo {
+    #[serde(rename = "std:name", default)]
+    pub name: String,
+    #[serde(rename = "std:version", default)]
+    pub version: String,
+    #[serde(rename = "std:description", default)]
+    pub description: String,
+    #[serde(
+        rename = "std:default-language",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub default_language: Option<String>,
+    #[serde(
+        rename = "std:capabilities",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub capabilities: Vec<ComponentCapability>,
+    /// Extra metadata keys not matching well-known `std:*` fields.
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, serde_json::Value>,
+}
 
-use crate::constants::*;
+impl ComponentInfo {
+    pub fn new(
+        name: impl Into<String>,
+        version: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            version: version.into(),
+            description: description.into(),
+            ..Default::default()
+        }
+    }
+}
 
 // ── Error type ──
 
@@ -363,14 +376,15 @@ mod tests {
 
     #[test]
     fn metadata_to_json_empty() {
-        assert!(Metadata::new().to_json().is_none());
+        let json: serde_json::Value = Metadata::new().into();
+        assert_eq!(json, json!({}));
     }
 
     #[test]
     fn metadata_to_json_with_values() {
         let mut m = Metadata::new();
         m.insert("std:read-only", true);
-        let json = m.to_json().unwrap();
+        let json: serde_json::Value = m.into();
         assert_eq!(json["std:read-only"], json!(true));
     }
 
@@ -380,25 +394,5 @@ mod tests {
         let m = Metadata::from(v);
         assert_eq!(m.get("key"), Some(&json!(42)));
         assert_eq!(m.get_as::<u32>("key"), Some(42));
-    }
-
-    #[test]
-    fn args_from_json_roundtrip() {
-        let val = json!({"code": "2+2"});
-        let args = Args::from_json(&val).unwrap();
-        let decoded = args.to_json().unwrap();
-        assert_eq!(val, decoded);
-    }
-
-    #[test]
-    fn args_deserialize_typed() {
-        #[derive(serde::Deserialize, PartialEq, Debug)]
-        struct Params {
-            code: String,
-        }
-        let val = json!({"code": "hello"});
-        let args = Args::from_json(&val).unwrap();
-        let params: Params = args.deserialize().unwrap();
-        assert_eq!(params.code, "hello");
     }
 }

@@ -502,25 +502,6 @@ fn gen_args_struct_ident(fn_ident: &syn::Ident) -> syn::Ident {
     format_ident!("__{}Args", pascal)
 }
 
-/// CBOR-serializable struct for the `act:component` custom section.
-///
-/// Name, version, description are stored in standard WASM metadata sections
-/// (component-name, version, description) — not duplicated here.
-#[derive(serde::Serialize)]
-struct ActComponentSection {
-    #[serde(rename = "std:name")]
-    name: String,
-    #[serde(rename = "std:version")]
-    version: String,
-    #[serde(rename = "std:description")]
-    description: String,
-    #[serde(
-        rename = "std:default-language",
-        skip_serializing_if = "Option::is_none"
-    )]
-    default_language: Option<String>,
-}
-
 /// Generate CBOR bytes for the `act:component` custom section.
 fn gen_component_section_cbor(
     name: &str,
@@ -528,14 +509,10 @@ fn gen_component_section_cbor(
     description: &str,
     default_language: &Option<String>,
 ) -> Vec<u8> {
-    let section = ActComponentSection {
-        name: name.to_string(),
-        version: version.to_string(),
-        description: description.to_string(),
-        default_language: default_language.clone(),
-    };
+    let mut info = act_types::ComponentInfo::new(name, version, description);
+    info.default_language = default_language.clone();
     let mut buf = Vec::new();
-    ciborium::into_writer(&section, &mut buf).expect("CBOR encoding failed");
+    ciborium::into_writer(&info, &mut buf).expect("CBOR encoding failed");
     buf
 }
 

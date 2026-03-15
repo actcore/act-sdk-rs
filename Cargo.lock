@@ -20,6 +20,7 @@ dependencies = [
 name = "act-sdk-macros"
 version = "0.2.0"
 dependencies = [
+ "act-types",
  "ciborium",
  "darling",
  "proc-macro2",
