@@ -18,6 +18,13 @@ pub const COMPONENT_DESCRIPTION: &str = "std:description";
 pub const COMPONENT_DEFAULT_LANGUAGE: &str = "std:default-language";
 pub const COMPONENT_CAPABILITIES: &str = "std:capabilities";
 pub const COMPONENT_SKILL: &str = "std:skill";
+pub const COMPONENT_FS_MOUNT_ROOT: &str = "std:fs:mount-root";
+
+// ── Capability identifiers ──
+
+pub const CAP_FILESYSTEM: &str = "wasi:filesystem";
+pub const CAP_SOCKETS: &str = "wasi:sockets";
+pub const CAP_HTTP: &str = "wasi:http";
 
 // ── Tool definition metadata keys ──
 

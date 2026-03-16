@@ -155,6 +155,11 @@ impl Metadata {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+    /// Merge all entries from `other` into `self`. Entries in `other` overwrite existing keys.
+    pub fn extend(&mut self, other: Metadata) {
+        self.0.extend(other.0);
+    }
 }
 
 /// Convert from a JSON object value. Non-object values produce empty metadata.
