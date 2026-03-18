@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Shared types and CBOR utilities for the ACT (Agent Component Tools) protocol"
+readme = "../README.md"
 keywords = ["act", "wasm", "component-model", "mcp", "tools"]
 categories = ["wasm", "encoding", "development-tools"]
 

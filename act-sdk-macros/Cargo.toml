@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Proc macros for the ACT SDK (#[act_component], #[act_tool])"
+readme = "../README.md"
 keywords = ["act", "wasm", "component-model", "proc-macro"]
 categories = ["wasm", "development-tools::procedural-macro-helpers"]
 

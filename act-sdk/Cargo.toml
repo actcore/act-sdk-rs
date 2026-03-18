@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Rust SDK for building ACT (Agent Component Tools) WebAssembly components"
+readme = "../README.md"
 keywords = ["act", "wasm", "component-model", "mcp", "sdk"]
 categories = ["wasm", "development-tools"]
 
