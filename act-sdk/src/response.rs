@@ -1,5 +1,4 @@
 use crate::context::RawStreamEvent;
-use act_types::cbor::to_cbor;
 
 /// Trait for types that can be converted into stream events.
 pub trait IntoResponse {
@@ -41,7 +40,7 @@ impl IntoResponse for Vec<u8> {
 impl IntoResponse for serde_json::Value {
     fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
         vec![RawStreamEvent::Content {
-            data: to_cbor(&self),
+            data: serde_json::to_vec(&self).unwrap_or_default(),
             mime_type: Some("application/json".to_string()),
             metadata: vec![],
         }]
