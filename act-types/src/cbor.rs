@@ -31,11 +31,11 @@ pub fn cbor_to_json(bytes: &[u8]) -> Result<serde_json::Value, CborError> {
 
 /// Decode content-part data based on MIME type.
 ///
-/// - `text/*` — raw UTF-8 bytes → JSON string
+/// - `text/*`, `application/json` — raw UTF-8 bytes → JSON string
 /// - everything else — CBOR-decoded to JSON, with base64 fallback for invalid CBOR
 pub fn decode_content_data(data: &[u8], mime_type: Option<&str>) -> serde_json::Value {
     let mime = mime_type.unwrap_or("application/cbor");
-    if mime.starts_with("text/") {
+    if mime.starts_with("text/") || mime == "application/json" {
         serde_json::Value::String(String::from_utf8_lossy(data).into_owned())
     } else {
         cbor_to_json(data).unwrap_or_else(|_| {
@@ -111,6 +111,13 @@ mod tests {
         let data = to_cbor(&json!({"key": "value"}));
         let result = decode_content_data(&data, None);
         assert_eq!(result, json!({"key": "value"}));
+    }
+
+    #[test]
+    fn decode_json_content_as_text() {
+        let data = br#"{"pets": [1, 2, 3]}"#;
+        let result = decode_content_data(data, Some("application/json"));
+        assert_eq!(result, json!(r#"{"pets": [1, 2, 3]}"#));
     }
 
     #[test]
