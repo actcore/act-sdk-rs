@@ -18,6 +18,6 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
 darling = "0.23"
-act-types = { version = "0.2.3", path = "../act-types" }
+act-types = { version = "0.2.4", path = "../act-types" }
 ciborium = "0.2"
 serde = { version = "1", features = ["derive"] }
