@@ -7,20 +7,32 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
 jobs:
   publish:
     name: Publish to crates.io
     runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@nightly
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
       - name: Publish act-types
         run: cargo publish -p act-types
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish act-sdk-macros
         run: cargo publish -p act-sdk-macros
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish act-sdk
         run: cargo publish -p act-sdk
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
