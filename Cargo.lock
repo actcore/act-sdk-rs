@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "act-sdk"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "act-sdk-macros",
  "act-types",
@@ -16,7 +16,7 @@ dependencies = [
 
 [[package]]
 name = "act-sdk-macros"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "act-types",
  "ciborium",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "act-types"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "base64",
  "ciborium",
@@ -134,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "config-sdk"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
@@ -150,7 +150,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "counter"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "ciborium",
  "serde",
@@ -389,7 +389,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-sdk"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "hello-world"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "ciborium",
  "serde",
@@ -415,7 +415,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http-client"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "ciborium",
  "serde",
@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "http-client-sdk"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "act-sdk",
  "schemars 1.2.1",
