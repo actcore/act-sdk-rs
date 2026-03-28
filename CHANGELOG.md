@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-03-30
+
+### Added
+
+- `embed_skill!("skill/")` macro — embeds an Agent Skills directory as an `act:skill` WASM custom section (uncompressed tar). See `ACT-AGENTSKILLS.md`.
+- SECURITY.md with supply chain and sandbox policies
+
+### Changed
+
+- `#[act_component]` attributes are now optional — `name`, `version`, `description` default to `Cargo.toml` values (`CARGO_PKG_NAME`, `CARGO_PKG_VERSION`, `CARGO_PKG_DESCRIPTION`)
+
 ## [0.2.5] - 2026-03-26
 
 ### Changed
