@@ -3,7 +3,7 @@ pub mod context;
 pub mod response;
 pub mod types;
 
-pub use act_sdk_macros::{act_component, act_tool};
+pub use act_sdk_macros::{act_component, act_tool, embed_skill};
 pub use context::ActContext;
 pub use response::IntoResponse;
 pub use types::{ActError, ActResult};

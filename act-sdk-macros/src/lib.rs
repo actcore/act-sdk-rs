@@ -1,4 +1,5 @@
 mod component;
+mod skill;
 mod tool;
 
 use darling::FromMeta;
@@ -84,4 +85,27 @@ pub fn act_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // When used standalone, pass through unchanged.
     // When inside #[act_component], the component macro processes this.
     item
+}
+
+/// Embed an Agent Skills directory as an `act:skill` WASM custom section.
+///
+/// Reads the directory at compile time, packs it as an uncompressed tar archive,
+/// and emits a `#[link_section = "act:skill"]` static. The directory must contain
+/// at least a `SKILL.md` file.
+///
+/// The path is relative to the crate's `CARGO_MANIFEST_DIR`.
+///
+/// # Example
+///
+/// ```ignore
+/// act_sdk::embed_skill!("skill/");
+/// ```
+///
+/// See `ACT-AGENTSKILLS.md` for the full specification.
+#[proc_macro]
+pub fn embed_skill(input: TokenStream) -> TokenStream {
+    match skill::generate(input.into()) {
+        Ok(tokens) => tokens.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
 }

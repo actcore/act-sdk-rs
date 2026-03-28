@@ -21,3 +21,4 @@ darling = "0.23"
 act-types = { version = "0.2.4", path = "../act-types" }
 ciborium = "0.2"
 serde = { version = "1", features = ["derive"] }
+tar = "0.4"
