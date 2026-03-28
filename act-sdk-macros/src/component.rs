@@ -6,11 +6,15 @@ use syn::{Item, ItemMod};
 use crate::tool::{self, ToolAttrs, ToolInfo};
 
 /// Attributes parsed from #[act_component(...)].
+/// All fields are optional — defaults are taken from Cargo.toml via env!().
 #[derive(Debug, FromMeta)]
 pub struct ComponentAttrs {
-    pub name: String,
-    pub version: String,
-    pub description: String,
+    #[darling(default)]
+    pub name: Option<String>,
+    #[darling(default)]
+    pub version: Option<String>,
+    #[darling(default)]
+    pub description: Option<String>,
     #[darling(default)]
     pub default_language: Option<String>,
 }
@@ -23,16 +27,23 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Collect user items from the module (excluding #[act_tool] attrs but keeping fn bodies)
     let user_items = collect_user_items(module);
 
-    let comp_name = &attrs.name;
-    let comp_version = &attrs.version;
-    let comp_description = &attrs.description;
+    // Resolve name/version/description: explicit attrs > Cargo.toml env vars
+    let comp_name = attrs
+        .name
+        .unwrap_or_else(|| std::env::var("CARGO_PKG_NAME").unwrap_or_default());
+    let comp_version = attrs
+        .version
+        .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
+    let comp_description = attrs
+        .description
+        .unwrap_or_else(|| std::env::var("CARGO_PKG_DESCRIPTION").unwrap_or_default());
     let default_lang = attrs.default_language.as_deref().unwrap_or("en");
 
     // Generate CBOR-encoded `act:component` custom section at compile time.
     let act_component_cbor = gen_component_section_cbor(
-        comp_name,
-        comp_version,
-        comp_description,
+        &comp_name,
+        &comp_version,
+        &comp_description,
         &attrs.default_language,
     );
     let cbor_len = act_component_cbor.len();

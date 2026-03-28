@@ -12,33 +12,43 @@ use proc_macro::TokenStream;
 ///
 /// # Attributes
 ///
-/// - `name = "..."` (required) — Component name
-/// - `version = "..."` (required) — Component version
-/// - `description = "..."` (required) — Component description
-/// - `default_language = "..."` (optional) — BCP 47 language tag
+/// All attributes are optional — defaults are taken from `Cargo.toml`:
 ///
-/// # Example
+/// - `name = "..."` — Component name (default: `CARGO_PKG_NAME`)
+/// - `version = "..."` — Component version (default: `CARGO_PKG_VERSION`)
+/// - `description = "..."` — Component description (default: `CARGO_PKG_DESCRIPTION`)
+/// - `default_language = "..."` — BCP 47 language tag (default: `"en"`)
+///
+/// # Examples
 ///
 /// ```ignore
-/// #[act_component(
-///     name = "my-component",
-///     version = "0.1.0",
-///     description = "My ACT component",
-/// )]
+/// // All fields from Cargo.toml:
+/// #[act_component]
 /// mod component {
 ///     use super::*;
 ///
 ///     #[act_tool(description = "Say hello")]
-///     fn greet(args: GreetArgs) -> ActResult<String> {
-///         Ok(format!("Hello, {}!", args.name))
+///     fn greet(name: String) -> ActResult<String> {
+///         Ok(format!("Hello, {name}!"))
 ///     }
+/// }
+///
+/// // Override just the name:
+/// #[act_component(name = "custom-name")]
+/// mod component {
+///     // ...
 /// }
 /// ```
 #[proc_macro_attribute]
 pub fn act_component(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let attr_args = match darling::ast::NestedMeta::parse_meta_list(attr.into()) {
-        Ok(a) => a,
-        Err(e) => return TokenStream::from(darling::Error::from(e).write_errors()),
+    let attr_stream: proc_macro2::TokenStream = attr.into();
+    let attr_args = if attr_stream.is_empty() {
+        Vec::new()
+    } else {
+        match darling::ast::NestedMeta::parse_meta_list(attr_stream) {
+            Ok(a) => a,
+            Err(e) => return TokenStream::from(darling::Error::from(e).write_errors()),
+        }
     };
     let attrs = match component::ComponentAttrs::from_list(&attr_args) {
         Ok(a) => a,
