@@ -218,34 +218,51 @@ pub struct FilesystemCap {
     pub mount_root: Option<String>,
 }
 
+/// Parameters for the `wasi:http` capability.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub struct HttpCap {}
+
+/// Parameters for the `wasi:sockets` capability.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub struct SocketsCap {}
+
 /// Capability declarations from the `std:capabilities` map in `act:component`.
 ///
 /// Well-known capabilities have typed fields. Unknown third-party capabilities
 /// are collected in `other`. Serializes as a CBOR/JSON map keyed by capability ID.
-#[derive(Debug, Clone, Default)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Capabilities {
-    /// `wasi:http` — outbound HTTP requests.
-    pub http: bool,
     /// `wasi:filesystem` — filesystem access.
+    #[serde(rename = "wasi:filesystem")]
     pub filesystem: Option<FilesystemCap>,
+    /// `wasi:http` — outbound HTTP requests.
+    #[serde(rename = "wasi:http")]
+    pub http: Option<HttpCap>,
     /// `wasi:sockets` — outbound TCP/UDP connections.
-    pub sockets: bool,
+    #[serde(rename = "wasi:sockets")]
+    pub sockets: Option<SocketsCap>,
     /// Third-party capabilities keyed by identifier.
+    #[serde(flatten)]
     pub other: BTreeMap<String, serde_json::Value>,
 }
 
 impl Capabilities {
     /// True if no capabilities are declared.
     pub fn is_empty(&self) -> bool {
-        !self.http && self.filesystem.is_none() && !self.sockets && self.other.is_empty()
+        self.http.is_none()
+            && self.filesystem.is_none()
+            && self.sockets.is_none()
+            && self.other.is_empty()
     }
 
     /// Check if a capability is declared by its string identifier.
     pub fn has(&self, id: &str) -> bool {
         match id {
-            CAP_HTTP => self.http,
+            CAP_HTTP => self.http.is_some(),
             CAP_FILESYSTEM => self.filesystem.is_some(),
-            CAP_SOCKETS => self.sockets,
+            CAP_SOCKETS => self.sockets.is_some(),
             other => self.other.contains_key(other),
         }
     }
@@ -253,52 +270,6 @@ impl Capabilities {
     /// Get the `mount-root` parameter from the `wasi:filesystem` capability.
     pub fn fs_mount_root(&self) -> Option<&str> {
         self.filesystem.as_ref()?.mount_root.as_deref()
-    }
-}
-
-impl serde::Serialize for Capabilities {
-    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeMap;
-        let len = self.filesystem.is_some() as usize
-            + self.http as usize
-            + self.sockets as usize
-            + self.other.len();
-        let mut map = ser.serialize_map(Some(len))?;
-        // Known caps first (filesystem < http < sockets), then other caps in key order
-        if let Some(fs) = &self.filesystem {
-            map.serialize_entry(CAP_FILESYSTEM, fs)?;
-        }
-        if self.http {
-            map.serialize_entry(CAP_HTTP, &serde_json::Map::new())?;
-        }
-        if self.sockets {
-            map.serialize_entry(CAP_SOCKETS, &serde_json::Map::new())?;
-        }
-        for (k, v) in &self.other {
-            map.serialize_entry(k, v)?;
-        }
-        map.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Capabilities {
-    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        let map: BTreeMap<String, serde_json::Value> = BTreeMap::deserialize(de)?;
-        let mut caps = Capabilities::default();
-        for (k, v) in map {
-            match k.as_str() {
-                CAP_HTTP => caps.http = true,
-                CAP_FILESYSTEM => {
-                    caps.filesystem =
-                        Some(serde_json::from_value(v).map_err(serde::de::Error::custom)?);
-                }
-                CAP_SOCKETS => caps.sockets = true,
-                _ => {
-                    caps.other.insert(k, v);
-                }
-            }
-        }
-        Ok(caps)
     }
 }
 
@@ -491,7 +462,7 @@ mod tests {
     #[test]
     fn capabilities_cbor_roundtrip() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test component");
-        info.capabilities.http = true;
+        info.capabilities.http = Some(HttpCap {});
         info.capabilities.filesystem = Some(FilesystemCap {
             mount_root: Some("/data".to_string()),
         });
@@ -500,9 +471,9 @@ mod tests {
         ciborium::into_writer(&info, &mut buf).unwrap();
 
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.capabilities.http);
+        assert!(decoded.capabilities.http.is_some());
         assert!(decoded.capabilities.filesystem.is_some());
-        assert!(!decoded.capabilities.sockets);
+        assert!(decoded.capabilities.sockets.is_none());
         assert_eq!(decoded.capabilities.fs_mount_root(), Some("/data"));
     }
 

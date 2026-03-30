@@ -6,5 +6,6 @@ pub mod mcp;
 pub mod types;
 
 pub use types::{
-    ActError, ActResult, Capabilities, ComponentInfo, FilesystemCap, LocalizedString, Metadata,
+    ActError, ActResult, Capabilities, ComponentInfo, FilesystemCap, HttpCap, LocalizedString,
+    Metadata, SocketsCap,
 };

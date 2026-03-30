@@ -9,6 +9,10 @@ use crate::tool::{self, ToolAttrs, ToolInfo};
 /// All fields are optional — defaults are taken from Cargo.toml via env!().
 #[derive(Debug, FromMeta)]
 pub struct ComponentAttrs {
+    /// Path to manifest file relative to crate root (default: `"act.toml"`).
+    #[darling(default)]
+    pub manifest: Option<String>,
+    // Override fields (take precedence over act.toml and Cargo.toml)
     #[darling(default)]
     pub name: Option<String>,
     #[darling(default)]
@@ -27,25 +31,29 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Collect user items from the module (excluding #[act_tool] attrs but keeping fn bodies)
     let user_items = collect_user_items(module);
 
-    // Resolve name/version/description: explicit attrs > Cargo.toml env vars
-    let comp_name = attrs
-        .name
-        .unwrap_or_else(|| std::env::var("CARGO_PKG_NAME").unwrap_or_default());
-    let comp_version = attrs
-        .version
-        .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
-    let comp_description = attrs
-        .description
-        .unwrap_or_else(|| std::env::var("CARGO_PKG_DESCRIPTION").unwrap_or_default());
-    let default_lang = attrs.default_language.as_deref().unwrap_or("en");
+    // Read act.toml manifest (if present) and merge with attribute overrides + Cargo.toml.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+    let manifest_file = attrs.manifest.as_deref().unwrap_or("act.toml");
+    let manifest_path = std::path::Path::new(&manifest_dir).join(manifest_file);
+
+    let manifest = crate::manifest::read_manifest(&manifest_path).unwrap_or_else(|e| panic!("{e}"));
+
+    let overrides = crate::manifest::Overrides {
+        name: attrs.name,
+        version: attrs.version,
+        description: attrs.description,
+        default_language: attrs.default_language,
+    };
+
+    let info = crate::manifest::build_component_info(manifest, overrides);
+    let default_lang = info.default_language.as_deref().unwrap_or("en");
+    let comp_version = info.version.clone();
+    let comp_description = info.description.clone();
 
     // Generate CBOR-encoded `act:component` custom section at compile time.
-    let act_component_cbor = gen_component_section_cbor(
-        &comp_name,
-        &comp_version,
-        &comp_description,
-        &attrs.default_language,
-    );
+    let mut cbor_buf = Vec::new();
+    ciborium::into_writer(&info, &mut cbor_buf).expect("CBOR encoding failed");
+    let act_component_cbor = cbor_buf;
     let cbor_len = act_component_cbor.len();
     let cbor_literal = Literal::byte_string(&act_component_cbor);
 
@@ -79,6 +87,16 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             quote! { None }
         };
 
+    // Track act.toml so cargo rebuilds when it changes.
+    let manifest_tracking = if manifest_path.exists() {
+        let path_str = manifest_path.to_string_lossy().to_string();
+        quote! {
+            const _: &[u8] = include_bytes!(#path_str);
+        }
+    } else {
+        quote! {}
+    };
+
     // Generate the complete output
     let output = quote! {
         // WIT bindings generation
@@ -87,6 +105,9 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             world: "component-world",
             generate_all,
         });
+
+        // Track act.toml for cargo rebuild.
+        #manifest_tracking
 
         // Standard WASM metadata custom sections (OCI annotations).
         // Compatible with wasm-tools, wkg, wa.dev, and the WASM component ecosystem.
@@ -522,20 +543,6 @@ fn gen_args_struct_ident(fn_ident: &syn::Ident) -> syn::Ident {
         })
         .collect::<String>();
     format_ident!("__{}Args", pascal)
-}
-
-/// Generate CBOR bytes for the `act:component` custom section.
-fn gen_component_section_cbor(
-    name: &str,
-    version: &str,
-    description: &str,
-    default_language: &Option<String>,
-) -> Vec<u8> {
-    let mut info = act_types::ComponentInfo::new(name, version, description);
-    info.default_language = default_language.clone();
-    let mut buf = Vec::new();
-    ciborium::into_writer(&info, &mut buf).expect("CBOR encoding failed");
-    buf
 }
 
 /// Generate a hidden #[derive(Deserialize, JsonSchema)] struct for individual-params tools.

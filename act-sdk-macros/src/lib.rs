@@ -1,4 +1,5 @@
 mod component;
+mod manifest;
 mod skill;
 mod tool;
 
@@ -11,19 +12,25 @@ use proc_macro::TokenStream;
 /// WIT component implementation with `wit_bindgen::generate!()`, `export!()`,
 /// and a `Guest` trait implementation.
 ///
+/// # Manifest
+///
+/// Reads `act.toml` from the crate root for component metadata and capabilities.
+/// If `act.toml` is absent, all metadata comes from `Cargo.toml`.
+///
+/// Resolution order: **attribute > act.toml > Cargo.toml**.
+///
 /// # Attributes
 ///
-/// All attributes are optional — defaults are taken from `Cargo.toml`:
-///
-/// - `name = "..."` — Component name (default: `CARGO_PKG_NAME`)
-/// - `version = "..."` — Component version (default: `CARGO_PKG_VERSION`)
-/// - `description = "..."` — Component description (default: `CARGO_PKG_DESCRIPTION`)
-/// - `default_language = "..."` — BCP 47 language tag (default: `"en"`)
+/// - `manifest = "..."` — Path to manifest file (default: `"act.toml"`)
+/// - `name = "..."` — Override component name
+/// - `version = "..."` — Override component version
+/// - `description = "..."` — Override component description
+/// - `default_language = "..."` — Override BCP 47 language tag
 ///
 /// # Examples
 ///
 /// ```ignore
-/// // All fields from Cargo.toml:
+/// // Reads act.toml, falls back to Cargo.toml:
 /// #[act_component]
 /// mod component {
 ///     use super::*;
@@ -34,11 +41,13 @@ use proc_macro::TokenStream;
 ///     }
 /// }
 ///
-/// // Override just the name:
-/// #[act_component(name = "custom-name")]
-/// mod component {
-///     // ...
-/// }
+/// // Feature-flag variant with attribute overrides:
+/// #[cfg_attr(not(feature = "vec"), act_component)]
+/// #[cfg_attr(feature = "vec", act_component(
+///     name = "sqlite-vec",
+///     description = "SQLite with vector search"
+/// ))]
+/// mod component { /* ... */ }
 /// ```
 #[proc_macro_attribute]
 pub fn act_component(attr: TokenStream, item: TokenStream) -> TokenStream {
