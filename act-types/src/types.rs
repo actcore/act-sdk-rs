@@ -276,6 +276,8 @@ impl Capabilities {
 /// Component metadata stored in the `act:component` WASM custom section (CBOR-encoded).
 ///
 /// Used by SDK macros (serialization) and host (deserialization).
+/// Also deserializable from `act.toml` manifest via `alias` attributes.
+///
 /// Standard WASM metadata fields (`version`, `description`) may also be read
 /// from their respective custom sections as fallback.
 ///
@@ -283,20 +285,22 @@ impl Capabilities {
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ComponentInfo {
-    #[serde(rename = "std:name", default)]
+    #[serde(rename = "std:name", alias = "name", default)]
     pub name: String,
-    #[serde(rename = "std:version", default)]
+    #[serde(rename = "std:version", alias = "version", default)]
     pub version: String,
-    #[serde(rename = "std:description", default)]
+    #[serde(rename = "std:description", alias = "description", default)]
     pub description: String,
     #[serde(
         rename = "std:default-language",
+        alias = "default-language",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub default_language: Option<String>,
     #[serde(
         rename = "std:capabilities",
+        alias = "capabilities",
         default,
         skip_serializing_if = "Capabilities::is_empty"
     )]
