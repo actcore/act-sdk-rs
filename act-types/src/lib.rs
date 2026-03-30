@@ -5,4 +5,6 @@ pub mod jsonrpc;
 pub mod mcp;
 pub mod types;
 
-pub use types::{ActError, ActResult, ComponentInfo, LocalizedString, Metadata};
+pub use types::{
+    ActError, ActResult, Capabilities, ComponentInfo, FilesystemCap, LocalizedString, Metadata,
+};

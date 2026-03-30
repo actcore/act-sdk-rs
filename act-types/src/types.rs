@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::cbor;
 
@@ -206,13 +206,100 @@ use crate::constants::*;
 
 // ── Component info (act:component custom section) ──
 
-/// A capability required or optionally used by the component.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ComponentCapability {
-    pub id: String,
-    pub required: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+/// Parameters for the `wasi:filesystem` capability.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct FilesystemCap {
+    /// Internal WASM root path for all host mounts (default: `/`).
+    #[serde(
+        rename = "mount-root",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub mount_root: Option<String>,
+}
+
+/// Capability declarations from the `std:capabilities` map in `act:component`.
+///
+/// Well-known capabilities have typed fields. Unknown third-party capabilities
+/// are collected in `other`. Serializes as a CBOR/JSON map keyed by capability ID.
+#[derive(Debug, Clone, Default)]
+pub struct Capabilities {
+    /// `wasi:http` — outbound HTTP requests.
+    pub http: bool,
+    /// `wasi:filesystem` — filesystem access.
+    pub filesystem: Option<FilesystemCap>,
+    /// `wasi:sockets` — outbound TCP/UDP connections.
+    pub sockets: bool,
+    /// Third-party capabilities keyed by identifier.
+    pub other: BTreeMap<String, serde_json::Value>,
+}
+
+impl Capabilities {
+    /// True if no capabilities are declared.
+    pub fn is_empty(&self) -> bool {
+        !self.http && self.filesystem.is_none() && !self.sockets && self.other.is_empty()
+    }
+
+    /// Check if a capability is declared by its string identifier.
+    pub fn has(&self, id: &str) -> bool {
+        match id {
+            CAP_HTTP => self.http,
+            CAP_FILESYSTEM => self.filesystem.is_some(),
+            CAP_SOCKETS => self.sockets,
+            other => self.other.contains_key(other),
+        }
+    }
+
+    /// Get the `mount-root` parameter from the `wasi:filesystem` capability.
+    pub fn fs_mount_root(&self) -> Option<&str> {
+        self.filesystem.as_ref()?.mount_root.as_deref()
+    }
+}
+
+impl serde::Serialize for Capabilities {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let len = self.filesystem.is_some() as usize
+            + self.http as usize
+            + self.sockets as usize
+            + self.other.len();
+        let mut map = ser.serialize_map(Some(len))?;
+        // Known caps first (filesystem < http < sockets), then other caps in key order
+        if let Some(fs) = &self.filesystem {
+            map.serialize_entry(CAP_FILESYSTEM, fs)?;
+        }
+        if self.http {
+            map.serialize_entry(CAP_HTTP, &serde_json::Map::new())?;
+        }
+        if self.sockets {
+            map.serialize_entry(CAP_SOCKETS, &serde_json::Map::new())?;
+        }
+        for (k, v) in &self.other {
+            map.serialize_entry(k, v)?;
+        }
+        map.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Capabilities {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let map: BTreeMap<String, serde_json::Value> = BTreeMap::deserialize(de)?;
+        let mut caps = Capabilities::default();
+        for (k, v) in map {
+            match k.as_str() {
+                CAP_HTTP => caps.http = true,
+                CAP_FILESYSTEM => {
+                    caps.filesystem =
+                        Some(serde_json::from_value(v).map_err(serde::de::Error::custom)?);
+                }
+                CAP_SOCKETS => caps.sockets = true,
+                _ => {
+                    caps.other.insert(k, v);
+                }
+            }
+        }
+        Ok(caps)
+    }
 }
 
 /// Component metadata stored in the `act:component` WASM custom section (CBOR-encoded).
@@ -240,9 +327,9 @@ pub struct ComponentInfo {
     #[serde(
         rename = "std:capabilities",
         default,
-        skip_serializing_if = "Vec::is_empty"
+        skip_serializing_if = "Capabilities::is_empty"
     )]
-    pub capabilities: Vec<ComponentCapability>,
+    pub capabilities: Capabilities,
     /// Extra metadata keys not matching well-known `std:*` fields.
     #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
@@ -399,5 +486,62 @@ mod tests {
         let m = Metadata::from(v);
         assert_eq!(m.get("key"), Some(&json!(42)));
         assert_eq!(m.get_as::<u32>("key"), Some(42));
+    }
+
+    #[test]
+    fn capabilities_cbor_roundtrip() {
+        let mut info = ComponentInfo::new("test", "0.1.0", "test component");
+        info.capabilities.http = true;
+        info.capabilities.filesystem = Some(FilesystemCap {
+            mount_root: Some("/data".to_string()),
+        });
+
+        let mut buf = Vec::new();
+        ciborium::into_writer(&info, &mut buf).unwrap();
+
+        let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
+        assert!(decoded.capabilities.http);
+        assert!(decoded.capabilities.filesystem.is_some());
+        assert!(!decoded.capabilities.sockets);
+        assert_eq!(decoded.capabilities.fs_mount_root(), Some("/data"));
+    }
+
+    #[test]
+    fn capabilities_empty_roundtrip() {
+        let info = ComponentInfo::new("test", "0.1.0", "test");
+
+        let mut buf = Vec::new();
+        ciborium::into_writer(&info, &mut buf).unwrap();
+
+        let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
+        assert!(decoded.capabilities.is_empty());
+    }
+
+    #[test]
+    fn capabilities_fs_no_params_roundtrip() {
+        let mut info = ComponentInfo::new("test", "0.1.0", "test");
+        info.capabilities.filesystem = Some(FilesystemCap::default());
+
+        let mut buf = Vec::new();
+        ciborium::into_writer(&info, &mut buf).unwrap();
+
+        let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
+        assert!(decoded.capabilities.filesystem.is_some());
+        assert_eq!(decoded.capabilities.fs_mount_root(), None);
+    }
+
+    #[test]
+    fn capabilities_unknown_preserved() {
+        let mut info = ComponentInfo::new("test", "0.1.0", "test");
+        info.capabilities
+            .other
+            .insert("acme:gpu".to_string(), json!({"cores": 8}));
+
+        let mut buf = Vec::new();
+        ciborium::into_writer(&info, &mut buf).unwrap();
+
+        let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
+        assert!(decoded.capabilities.has("acme:gpu"));
+        assert_eq!(decoded.capabilities.other["acme:gpu"]["cores"], 8);
     }
 }
