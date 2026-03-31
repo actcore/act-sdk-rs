@@ -99,6 +99,11 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
 
     // Generate the complete output
     let output = quote! {
+        // Make serde/schemars visible for trait bounds in generated code,
+        // even if the component doesn't depend on them directly.
+        use ::act_sdk::__private::serde;
+        use ::act_sdk::__private::schemars;
+
         // WIT bindings generation
         wit_bindgen::generate!({
             path: "wit",
@@ -570,6 +575,8 @@ fn gen_arg_struct(tool: &ToolInfo) -> TokenStream {
 
     quote! {
         #[derive(::act_sdk::__private::serde::Deserialize, ::act_sdk::__private::schemars::JsonSchema)]
+        #[serde(crate = "::act_sdk::__private::serde")]
+        #[schemars(crate = "::act_sdk::__private::schemars")]
         #[allow(non_camel_case_types)]
         struct #struct_name {
             #(#fields)*
