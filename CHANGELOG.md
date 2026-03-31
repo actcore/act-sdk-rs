@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-03-31
+
+### Added
+
+- `act.toml` manifest file support — component metadata and capabilities are now read from `act.toml` at compile time, with fallback to `Cargo.toml` and `#[act_component]` attribute overrides
+- `FilesystemCap`, `HttpCap`, `SocketsCap` typed capability structs
+- `Capabilities::has()`, `Capabilities::fs_mount_root()` helper methods
+- Serde `alias` attributes on `ComponentInfo` for dual CBOR/TOML deserialization
+
+### Changed
+
+- **Breaking:** `ComponentInfo.capabilities` is now a typed `Capabilities` struct (was `Vec<ComponentCapability>`)
+- `std:capabilities` serializes as a CBOR map keyed by capability ID per spec v0.2.0 (was array of structs)
+- `mount-root` moved from top-level `std:fs:mount-root` into `capabilities.wasi:filesystem.mount-root`
+
+### Removed
+
+- `ComponentCapability` struct
+- `COMPONENT_FS_MOUNT_ROOT` constant
+
 ## [0.2.6] - 2026-03-30
 
 ### Added
