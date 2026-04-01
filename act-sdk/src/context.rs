@@ -40,7 +40,7 @@ impl<C> ActContext<C> {
     pub fn send_text(&mut self, text: impl Into<String>) {
         self.send_content(
             text.into().into_bytes(),
-            Some("text/plain".to_string()),
+            Some(crate::constants::MIME_TEXT.to_string()),
             vec![],
         );
     }
@@ -49,13 +49,13 @@ impl<C> ActContext<C> {
     pub fn send_cbor<T: serde::Serialize>(&mut self, value: &T) {
         let mut buf = Vec::new();
         ciborium::into_writer(value, &mut buf).expect("CBOR serialization should not fail");
-        self.send_content(buf, Some("application/cbor".to_string()), vec![]);
+        self.send_content(buf, Some(crate::constants::MIME_CBOR.to_string()), vec![]);
     }
 
     /// Send a JSON-encoded content event (buffered).
     pub fn send_json<T: serde::Serialize>(&mut self, value: &T) {
         let data = serde_json::to_vec(value).unwrap_or_default();
-        self.send_content(data, Some("application/json".to_string()), vec![]);
+        self.send_content(data, Some(crate::constants::MIME_JSON.to_string()), vec![]);
     }
 
     /// Send a content event with explicit data, MIME type, and metadata (buffered).

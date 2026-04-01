@@ -9,7 +9,7 @@ impl IntoResponse for String {
     fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
         vec![RawStreamEvent::Content {
             data: self.into_bytes(),
-            mime_type: Some("text/plain".to_string()),
+            mime_type: Some(crate::constants::MIME_TEXT.to_string()),
             metadata: vec![],
         }]
     }
@@ -31,7 +31,7 @@ impl IntoResponse for Vec<u8> {
     fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
         vec![RawStreamEvent::Content {
             data: self,
-            mime_type: Some("application/octet-stream".to_string()),
+            mime_type: Some(crate::constants::MIME_OCTET_STREAM.to_string()),
             metadata: vec![],
         }]
     }
@@ -44,7 +44,7 @@ impl<T: serde::Serialize> IntoResponse for Json<T> {
     fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
         vec![RawStreamEvent::Content {
             data: serde_json::to_vec(&self.0).unwrap_or_default(),
-            mime_type: Some("application/json".to_string()),
+            mime_type: Some(crate::constants::MIME_JSON.to_string()),
             metadata: vec![],
         }]
     }
@@ -78,7 +78,7 @@ pub fn cbor_encode_response<T: serde::Serialize>(
     ciborium::into_writer(val, &mut buf).expect("CBOR serialization should not fail");
     vec![RawStreamEvent::Content {
         data: buf,
-        mime_type: Some("application/cbor".to_string()),
+        mime_type: Some(crate::constants::MIME_CBOR.to_string()),
         metadata: vec![],
     }]
 }
@@ -102,7 +102,7 @@ mod tests {
         let value = json!({"rows": [1, 2, 3]});
         let events = Json(value.clone()).into_stream_events("en");
         let (data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some("application/json"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_JSON));
         let parsed: serde_json::Value = serde_json::from_slice(&data).unwrap();
         assert_eq!(parsed, value);
     }
@@ -121,7 +121,7 @@ mod tests {
         let input = vec![1u32, 2, 3];
         let events = cbor_encode_response(&input, "en");
         let (data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some("application/cbor"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_CBOR));
         let decoded: Vec<u32> = ciborium::from_reader(&data[..]).unwrap();
         assert_eq!(decoded, input);
     }
@@ -130,14 +130,14 @@ mod tests {
     fn vec_u8_produces_octet_stream() {
         let events = vec![1u8, 2, 3].into_stream_events("en");
         let (_data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some("application/octet-stream"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_OCTET_STREAM));
     }
 
     #[test]
     fn string_still_produces_text_plain() {
         let events = "hello".to_string().into_stream_events("en");
         let (data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some("text/plain"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_TEXT));
         assert_eq!(data, b"hello");
     }
 }

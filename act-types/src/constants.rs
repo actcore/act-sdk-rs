@@ -74,4 +74,5 @@ pub const SECTION_ACT_COMPONENT: &str = "act:component";
 pub const MIME_JSON: &str = "application/json";
 pub const MIME_CBOR: &str = "application/cbor";
 pub const MIME_TEXT: &str = "text/plain";
+pub const MIME_OCTET_STREAM: &str = "application/octet-stream";
 pub const MIME_SSE: &str = "text/event-stream";
