@@ -5,11 +5,11 @@ pub mod types;
 
 pub use act_sdk_macros::{act_component, act_tool, embed_skill};
 pub use context::ActContext;
-pub use response::IntoResponse;
+pub use response::{Content, IntoResponse, Json};
 pub use types::{ActError, ActResult};
 
 pub mod prelude {
-    pub use crate::{ActContext, ActError, ActResult, IntoResponse};
+    pub use crate::{ActContext, ActError, ActResult, Content, IntoResponse, Json};
     pub use crate::{act_component, act_tool};
     pub use schemars::JsonSchema;
     pub use serde::Deserialize;
