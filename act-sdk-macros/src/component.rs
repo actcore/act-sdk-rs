@@ -352,6 +352,22 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     }
 }
 
+/// Check if a return type has a direct `IntoResponse` impl (no auto-CBOR needed).
+///
+/// Known types: `()`, `String`, `&str`, `Vec<u8>`, `Json<_>`, `Content`,
+/// `serde_json::Value`, `Value`.
+fn has_direct_into_response(ty: &syn::Type) -> bool {
+    let s = quote!(#ty).to_string().replace(' ', "");
+    s == "()"
+        || s == "String"
+        || s == "&str"
+        || s == "Vec<u8>"
+        || s.starts_with("Json<")
+        || s.starts_with("Content")
+        || s == "serde_json::Value"
+        || s == "Value"
+}
+
 /// Generate the match arm for call_tool dispatch.
 fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     let tool_name = &tool.tool_name;
@@ -469,6 +485,24 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         quote! {}
     };
 
+    // Decide whether to use IntoResponse trait or auto-CBOR encoding.
+    // Known IntoResponse types use the trait directly; everything else gets CBOR.
+    let use_into_response = tool
+        .inner_return_type
+        .as_ref()
+        .is_none_or(has_direct_into_response);
+
+    let ok_response = if use_into_response {
+        quote! {
+            use ::act_sdk::IntoResponse;
+            let __response_events = __val.into_stream_events(__default_lang);
+        }
+    } else {
+        quote! {
+            let __response_events = ::act_sdk::response::cbor_encode_response(&__val, __default_lang);
+        }
+    };
+
     // Post-call: drain context events + handle result, write to WIT stream
     let post_call = if tool.has_context {
         quote! {
@@ -481,8 +515,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
             match __result {
                 Ok(__val) => {
-                    use ::act_sdk::IntoResponse;
-                    let __response_events = __val.into_stream_events(__default_lang);
+                    #ok_response
                     __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
                 }
                 Err(__err) => {
@@ -501,9 +534,8 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         quote! {
             match __result {
                 Ok(__val) => {
-                    use ::act_sdk::IntoResponse;
-                    let __raw_events = __val.into_stream_events(__default_lang);
-                    let __wit_events: Vec<act::core::types::StreamEvent> = __raw_events
+                    #ok_response
+                    let __wit_events: Vec<act::core::types::StreamEvent> = __response_events
                         .into_iter()
                         .map(|e| __raw_to_wit(e))
                         .collect();

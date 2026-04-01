@@ -24,6 +24,9 @@ pub struct ToolInfo {
     /// If a parameter is marked with #[args], its type is used directly
     /// for schema generation and deserialization (no hidden wrapper struct).
     pub struct_args: Option<Type>,
+    /// The inner type T from the `ActResult<T>` return type.
+    /// `None` if the return type is not `ActResult` or `Result`.
+    pub inner_return_type: Option<Type>,
     /// Tool metadata flags.
     pub read_only: bool,
     pub idempotent: bool,
@@ -153,6 +156,7 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
     }
 
     let streaming = attrs.streaming;
+    let inner_return_type = extract_result_inner_type(&func.sig.output);
 
     Ok(ToolInfo {
         func: func.clone(),
@@ -164,6 +168,7 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
         metadata_type,
         args,
         struct_args,
+        inner_return_type,
         read_only: attrs.read_only,
         idempotent: attrs.idempotent,
         destructive: attrs.destructive,
@@ -174,8 +179,7 @@ pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
 
 /// Determine the return type's inner type from ActResult<T>.
 /// Returns None if the return type isn't ActResult or Result.
-#[allow(dead_code)]
-pub fn extract_result_inner_type(ret: &syn::ReturnType) -> Option<Type> {
+fn extract_result_inner_type(ret: &syn::ReturnType) -> Option<Type> {
     if let syn::ReturnType::Type(_, ty) = ret
         && let Type::Path(tp) = ty.as_ref()
         && let Some(seg) = tp.path.segments.last()
