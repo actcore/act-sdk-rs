@@ -522,7 +522,8 @@ mod tests {
     #[test]
     fn capabilities_unknown_preserved() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test");
-        info.std.capabilities
+        info.std
+            .capabilities
             .other
             .insert("acme:gpu".to_string(), json!({"cores": 8}));
 
