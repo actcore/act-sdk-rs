@@ -29,19 +29,27 @@ pub fn cbor_to_json(bytes: &[u8]) -> Result<serde_json::Value, CborError> {
     ciborium::from_reader(bytes).map_err(|e| CborError(format!("CBOR→JSON decode failed: {e}")))
 }
 
-/// Decode content-part data based on MIME type.
+/// Decode content-part data based on MIME type for JSON representation.
 ///
-/// - `text/*`, `application/json` — raw UTF-8 bytes → JSON string
-/// - everything else — CBOR-decoded to JSON, with base64 fallback for invalid CBOR
+/// - `text/*`, `application/json`, `application/xml` — raw UTF-8 bytes → JSON string
+/// - `application/cbor` — CBOR-decoded to JSON value
+/// - everything else (image/*, octet-stream, etc.) — base64-encoded string
 pub fn decode_content_data(data: &[u8], mime_type: Option<&str>) -> serde_json::Value {
     let mime = mime_type.unwrap_or("application/cbor");
-    if mime.starts_with("text/") || mime == "application/json" {
+
+    if mime.starts_with("text/") || mime == "application/json" || mime == "application/xml" {
+        // Text-like: inline as string
         serde_json::Value::String(String::from_utf8_lossy(data).into_owned())
-    } else {
+    } else if mime == "application/cbor" {
+        // Structured: CBOR → JSON value
         cbor_to_json(data).unwrap_or_else(|_| {
             use base64::Engine as _;
             serde_json::Value::String(base64::engine::general_purpose::STANDARD.encode(data))
         })
+    } else {
+        // Binary (image/*, octet-stream, pdf, etc.): base64
+        use base64::Engine as _;
+        serde_json::Value::String(base64::engine::general_purpose::STANDARD.encode(data))
     }
 }
 
@@ -126,5 +134,43 @@ mod tests {
         let result = decode_content_data(data, Some("application/octet-stream"));
         // Should be base64 string
         assert!(result.is_string());
+    }
+
+    #[test]
+    fn decode_image_content_to_base64() {
+        let data = vec![0x89, 0x50, 0x4E, 0x47]; // PNG magic bytes
+        let result = decode_content_data(&data, Some("image/png"));
+        assert!(result.is_string());
+        use base64::Engine as _;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(result.as_str().unwrap())
+            .unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn decode_octet_stream_to_base64() {
+        let data = vec![0xFF, 0xFE, 0x00];
+        let result = decode_content_data(&data, Some("application/octet-stream"));
+        assert!(result.is_string());
+        use base64::Engine as _;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(result.as_str().unwrap())
+            .unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn decode_html_as_text() {
+        let data = b"<h1>Hello</h1>";
+        let result = decode_content_data(data, Some("text/html"));
+        assert_eq!(result, json!("<h1>Hello</h1>"));
+    }
+
+    #[test]
+    fn decode_xml_as_text() {
+        let data = b"<root><item/></root>";
+        let result = decode_content_data(data, Some("application/xml"));
+        assert_eq!(result, json!("<root><item/></root>"));
     }
 }

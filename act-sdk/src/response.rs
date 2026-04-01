@@ -83,7 +83,6 @@ pub fn cbor_encode_response<T: serde::Serialize>(
     }]
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

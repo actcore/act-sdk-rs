@@ -30,7 +30,7 @@ mod component {
     use super::*;
 
     #[act_tool(description = "Make an HTTP request")]
-    async fn fetch(#[args] args: FetchArgs) -> ActResult<serde_json::Value> {
+    async fn fetch(#[args] args: FetchArgs) -> ActResult<Json<serde_json::Value>> {
         let method = match args.method.as_str() {
             "GET" => Method::Get,
             "POST" => Method::Post,
@@ -128,9 +128,9 @@ mod component {
         }
 
         let body_text = String::from_utf8_lossy(&body_bytes);
-        Ok(serde_json::json!({
+        Ok(Json(serde_json::json!({
             "status": status,
             "body": body_text,
-        }))
+        })))
     }
 }
