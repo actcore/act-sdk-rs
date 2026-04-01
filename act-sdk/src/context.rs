@@ -45,6 +45,19 @@ impl<C> ActContext<C> {
         );
     }
 
+    /// Send a CBOR-encoded content event (buffered).
+    pub fn send_cbor<T: serde::Serialize>(&mut self, value: &T) {
+        let mut buf = Vec::new();
+        ciborium::into_writer(value, &mut buf).expect("CBOR serialization should not fail");
+        self.send_content(buf, Some("application/cbor".to_string()), vec![]);
+    }
+
+    /// Send a JSON-encoded content event (buffered).
+    pub fn send_json<T: serde::Serialize>(&mut self, value: &T) {
+        let data = serde_json::to_vec(value).unwrap_or_default();
+        self.send_content(data, Some("application/json".to_string()), vec![]);
+    }
+
     /// Send a content event with explicit data, MIME type, and metadata (buffered).
     pub fn send_content(
         &mut self,

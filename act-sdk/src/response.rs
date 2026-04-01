@@ -83,15 +83,6 @@ pub fn cbor_encode_response<T: serde::Serialize>(
     }]
 }
 
-impl IntoResponse for serde_json::Value {
-    fn into_stream_events(self, _default_language: &str) -> Vec<RawStreamEvent> {
-        vec![RawStreamEvent::Content {
-            data: serde_json::to_vec(&self).unwrap_or_default(),
-            mime_type: Some("application/json".to_string()),
-            metadata: vec![],
-        }]
-    }
-}
 
 #[cfg(test)]
 mod tests {
