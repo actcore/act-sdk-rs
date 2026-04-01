@@ -364,8 +364,6 @@ fn has_direct_into_response(ty: &syn::Type) -> bool {
         || s == "Vec<u8>"
         || s.starts_with("Json<")
         || s.starts_with("Content")
-        || s == "serde_json::Value"
-        || s == "Value"
 }
 
 /// Generate the match arm for call_tool dispatch.
