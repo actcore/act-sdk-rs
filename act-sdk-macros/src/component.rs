@@ -46,9 +46,9 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     };
 
     let info = crate::manifest::build_component_info(manifest, overrides);
-    let default_lang = info.default_language.as_deref().unwrap_or("en");
-    let comp_version = info.version.clone();
-    let comp_description = info.description.clone();
+    let default_lang = info.std.default_language.as_deref().unwrap_or("en");
+    let comp_version = info.std.version.clone();
+    let comp_description = info.std.description.clone();
 
     // Generate CBOR-encoded `act:component` custom section at compile time.
     let mut cbor_buf = Vec::new();

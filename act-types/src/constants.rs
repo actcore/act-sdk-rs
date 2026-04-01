@@ -10,14 +10,9 @@ pub const ERR_TIMEOUT: &str = "std:timeout";
 pub const ERR_CAPABILITY_DENIED: &str = "std:capability-denied";
 pub const ERR_INTERNAL: &str = "std:internal";
 
-// ── Component info keys ──
+// ── Component info namespace ──
 
-pub const COMPONENT_NAME: &str = "std:name";
-pub const COMPONENT_VERSION: &str = "std:version";
-pub const COMPONENT_DESCRIPTION: &str = "std:description";
-pub const COMPONENT_DEFAULT_LANGUAGE: &str = "std:default-language";
-pub const COMPONENT_CAPABILITIES: &str = "std:capabilities";
-pub const COMPONENT_SKILL: &str = "std:skill";
+pub const COMPONENT_NS_STD: &str = "std";
 
 // ── Capability identifiers ──
 

@@ -1,6 +1,6 @@
 //! Read `act.toml` manifest and merge with attribute overrides and Cargo.toml fallbacks.
 //!
-//! `act.toml` deserializes directly into [`act_types::ComponentInfo`] via serde aliases.
+//! `act.toml` deserializes directly into [`act_types::ComponentInfo`] (nested `[std]` table).
 
 use std::path::Path;
 
@@ -30,27 +30,29 @@ pub fn build_component_info(
     overrides: Overrides,
 ) -> act_types::ComponentInfo {
     let m = manifest.unwrap_or_default();
+    let s = m.std;
 
     let name = overrides
         .name
-        .or_else(|| non_empty(m.name.clone()))
+        .or_else(|| non_empty(s.name.clone()))
         .unwrap_or_else(|| std::env::var("CARGO_PKG_NAME").unwrap_or_default());
     let version = overrides
         .version
-        .or_else(|| non_empty(m.version.clone()))
+        .or_else(|| non_empty(s.version.clone()))
         .unwrap_or_else(|| std::env::var("CARGO_PKG_VERSION").unwrap_or_default());
     let description = overrides
         .description
-        .or_else(|| non_empty(m.description.clone()))
+        .or_else(|| non_empty(s.description.clone()))
         .unwrap_or_else(|| std::env::var("CARGO_PKG_DESCRIPTION").unwrap_or_default());
     let default_language = overrides
         .default_language
-        .or(m.default_language)
+        .or(s.default_language)
         .or_else(|| Some("en".to_string()));
 
     let mut info = act_types::ComponentInfo::new(name, version, description);
-    info.default_language = default_language;
-    info.capabilities = m.capabilities;
+    info.std.default_language = default_language;
+    info.std.capabilities = s.capabilities;
+    info.extra = m.extra;
     info
 }
 

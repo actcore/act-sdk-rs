@@ -278,36 +278,36 @@ impl Capabilities {
 /// Used by SDK macros (serialization) and host (deserialization).
 /// Also deserializable from `act.toml` manifest via `alias` attributes.
 ///
-/// Standard WASM metadata fields (`version`, `description`) may also be read
-/// from their respective custom sections as fallback.
-///
-/// Extra keys (not matching `std:*` fields) are collected into `metadata`.
+/// Extra namespaces (not `std`) are collected into `extra`.
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ComponentInfo {
-    #[serde(rename = "std:name", alias = "name", default)]
+    /// Well-known component metadata.
+    #[serde(default)]
+    pub std: StdComponentInfo,
+    /// Extra namespaces (third-party extensions).
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// Well-known component metadata under the `std` namespace.
+#[non_exhaustive]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StdComponentInfo {
+    #[serde(default)]
     pub name: String,
-    #[serde(rename = "std:version", alias = "version", default)]
+    #[serde(default)]
     pub version: String,
-    #[serde(rename = "std:description", alias = "description", default)]
+    #[serde(default)]
     pub description: String,
     #[serde(
-        rename = "std:default-language",
-        alias = "default-language",
+        rename = "default-language",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub default_language: Option<String>,
-    #[serde(
-        rename = "std:capabilities",
-        alias = "capabilities",
-        default,
-        skip_serializing_if = "Capabilities::is_empty"
-    )]
+    #[serde(default, skip_serializing_if = "Capabilities::is_empty")]
     pub capabilities: Capabilities,
-    /// Extra metadata keys not matching well-known `std:*` fields.
-    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
-    pub metadata: HashMap<String, serde_json::Value>,
 }
 
 impl ComponentInfo {
@@ -317,11 +317,25 @@ impl ComponentInfo {
         description: impl Into<String>,
     ) -> Self {
         Self {
-            name: name.into(),
-            version: version.into(),
-            description: description.into(),
+            std: StdComponentInfo {
+                name: name.into(),
+                version: version.into(),
+                description: description.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
+    }
+
+    // Convenience accessors for backward compatibility.
+    pub fn name(&self) -> &str {
+        &self.std.name
+    }
+    pub fn version(&self) -> &str {
+        &self.std.version
+    }
+    pub fn description(&self) -> &str {
+        &self.std.description
     }
 }
 
@@ -466,8 +480,8 @@ mod tests {
     #[test]
     fn capabilities_cbor_roundtrip() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test component");
-        info.capabilities.http = Some(HttpCap {});
-        info.capabilities.filesystem = Some(FilesystemCap {
+        info.std.capabilities.http = Some(HttpCap {});
+        info.std.capabilities.filesystem = Some(FilesystemCap {
             mount_root: Some("/data".to_string()),
         });
 
@@ -475,10 +489,10 @@ mod tests {
         ciborium::into_writer(&info, &mut buf).unwrap();
 
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.capabilities.http.is_some());
-        assert!(decoded.capabilities.filesystem.is_some());
-        assert!(decoded.capabilities.sockets.is_none());
-        assert_eq!(decoded.capabilities.fs_mount_root(), Some("/data"));
+        assert!(decoded.std.capabilities.http.is_some());
+        assert!(decoded.std.capabilities.filesystem.is_some());
+        assert!(decoded.std.capabilities.sockets.is_none());
+        assert_eq!(decoded.std.capabilities.fs_mount_root(), Some("/data"));
     }
 
     #[test]
@@ -489,26 +503,26 @@ mod tests {
         ciborium::into_writer(&info, &mut buf).unwrap();
 
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.capabilities.is_empty());
+        assert!(decoded.std.capabilities.is_empty());
     }
 
     #[test]
     fn capabilities_fs_no_params_roundtrip() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test");
-        info.capabilities.filesystem = Some(FilesystemCap::default());
+        info.std.capabilities.filesystem = Some(FilesystemCap::default());
 
         let mut buf = Vec::new();
         ciborium::into_writer(&info, &mut buf).unwrap();
 
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.capabilities.filesystem.is_some());
-        assert_eq!(decoded.capabilities.fs_mount_root(), None);
+        assert!(decoded.std.capabilities.filesystem.is_some());
+        assert_eq!(decoded.std.capabilities.fs_mount_root(), None);
     }
 
     #[test]
     fn capabilities_unknown_preserved() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test");
-        info.capabilities
+        info.std.capabilities
             .other
             .insert("acme:gpu".to_string(), json!({"cores": 8}));
 
@@ -516,7 +530,7 @@ mod tests {
         ciborium::into_writer(&info, &mut buf).unwrap();
 
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.capabilities.has("acme:gpu"));
-        assert_eq!(decoded.capabilities.other["acme:gpu"]["cores"], 8);
+        assert!(decoded.std.capabilities.has("acme:gpu"));
+        assert_eq!(decoded.std.capabilities.other["acme:gpu"]["cores"], 8);
     }
 }
