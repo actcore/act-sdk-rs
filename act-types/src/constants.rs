@@ -43,7 +43,6 @@ pub const META_TRACEPARENT: &str = "std:traceparent";
 pub const META_TRACESTATE: &str = "std:tracestate";
 pub const META_REQUEST_ID: &str = "std:request-id";
 pub const META_PROGRESS_TOKEN: &str = "std:progress-token";
-pub const META_ACCEPT: &str = "std:accept";
 
 // ── Bridge metadata keys ──
 
