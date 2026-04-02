@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-02
+
+### Changed
+
+- **Nested `ComponentInfo` with `std` table** — component metadata is now wrapped in a `std` sub-struct, matching the updated ACT spec
+- **CBOR-first response encoding** — non-`IntoResponse` return types are automatically CBOR-encoded; use `Json<T>` to opt into JSON
+- Bump wit-bindgen dependency
+
+### Added
+
+- `Json<T>` and `Content` response types for explicit content-type control
+- Re-export `Json` and `Content` in prelude
+- Use MIME constants (`TEXT_PLAIN`, `APPLICATION_JSON`, etc.) instead of string literals
+
+### Fixed
+
+- Route `serde_json::Value` returns through CBOR encoder correctly
+
+### Removed
+
+- `Value` `IntoResponse` impl — use `send_cbor()`/`send_json()` helpers instead
+- `std:accept` metadata constant (content negotiation is a harness concern)
+
 ## [0.2.8] - 2026-03-31
 
 ### Fixed
@@ -125,6 +148,7 @@ Initial release of the ACT Rust SDK — a toolkit for building WebAssembly compo
 - E2E test infrastructure for components
 - Release pipeline with git-cliff changelog generation
 
+[0.3.0]: https://github.com/actcore/act-sdk-rs/compare/0.2.8..0.3.0
 [0.2.2]: https://github.com/actcore/act-sdk-rs/compare/0.2.1..0.2.2
 [0.2.1]: https://github.com/actcore/act-sdk-rs/compare/0.2.0..0.2.1
 [0.2.0]: https://github.com/actcore/act-sdk-rs/compare/0.1.0..0.2.0
