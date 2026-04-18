@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-18
+
+### Changed
+
+- Upgrade to `act:core@0.3.0`. `call-tool` now returns the `tool-result` variant (`immediate(list<tool-event>)` / `streaming(stream<tool-event>)`) instead of `stream<stream-event>`. Non-streaming tools no longer spawn a writer task — the macro returns `Immediate` directly.
+- Rename `StreamEvent` → `ToolEvent`, `RawStreamEvent` → `RawToolEvent`, and `IntoResponse::into_stream_events` → `into_tool_events`.
+- Vendor the `act:core` WIT directly (unvendored the old `act-wit` git submodule).
+
+### Removed
+
+- `std:streaming` metadata key on tool definitions. The variant of `tool-result` is an implementation detail, not a classification of the tool.
+
 ## [0.3.0] - 2026-04-02
 
 ### Changed
