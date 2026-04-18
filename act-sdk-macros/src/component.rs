@@ -137,18 +137,18 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         // Generated hidden arg structs
         #(#arg_structs)*
 
-        /// Convert a RawStreamEvent to a WIT StreamEvent.
-        fn __raw_to_wit(raw: ::act_sdk::context::RawStreamEvent) -> act::core::types::StreamEvent {
+        /// Convert a RawToolEvent to a WIT StreamEvent.
+        fn __raw_to_wit(raw: ::act_sdk::context::RawToolEvent) -> act::core::types::ToolEvent {
             match raw {
-                ::act_sdk::context::RawStreamEvent::Content { data, mime_type, metadata } => {
-                    act::core::types::StreamEvent::Content(act::core::types::ContentPart {
+                ::act_sdk::context::RawToolEvent::Content { data, mime_type, metadata } => {
+                    act::core::types::ToolEvent::Content(act::core::types::ContentPart {
                         data,
                         mime_type,
                         metadata,
                     })
                 }
-                ::act_sdk::context::RawStreamEvent::Error { kind, message, default_language: _ } => {
-                    act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                ::act_sdk::context::RawToolEvent::Error { kind, message, default_language: _ } => {
+                    act::core::types::ToolEvent::Error(act::core::types::ToolError {
                         kind,
                         message: act::core::types::LocalizedString::Plain(message),
                         metadata: vec![],
@@ -181,26 +181,18 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
 
             async fn call_tool(
                 call: act::core::types::ToolCall,
-            ) -> wit_bindgen::rt::async_support::StreamReader<act::core::types::StreamEvent> {
-                let (mut __wit_writer, reader) = wit_stream::new::<act::core::types::StreamEvent>();
-
-                wit_bindgen::spawn(async move {
-                    let __default_lang = #default_lang;
-                    match call.name.as_str() {
-                        #(#call_arms)*
-                        __other => {
-                            let _ = __wit_writer.write_all(vec![
-                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                    kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
-                                    message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
-                                    metadata: vec![],
-                                })
-                            ]).await;
-                        }
-                    }
-                });
-
-                reader
+            ) -> act::core::types::ToolResult {
+                let __default_lang = #default_lang;
+                match call.name.as_str() {
+                    #(#call_arms)*
+                    __other => act::core::types::ToolResult::Immediate(vec![
+                        act::core::types::ToolEvent::Error(act::core::types::ToolError {
+                            kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
+                            message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
+                            metadata: vec![],
+                        })
+                    ])
+                }
             }
         }
     };
@@ -367,6 +359,10 @@ fn has_direct_into_response(ty: &syn::Type) -> bool {
 }
 
 /// Generate the match arm for call_tool dispatch.
+///
+/// Non-streaming tools (no `ActContext` parameter) return `ToolResult::Immediate`
+/// directly. Streaming tools (with `ActContext`) spawn a writer task and return
+/// `ToolResult::Streaming`.
 fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     let tool_name = &tool.tool_name;
     let fn_ident = &tool.fn_ident;
@@ -378,14 +374,13 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             let __args: #struct_type = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = __wit_writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                    return act::core::types::ToolResult::Immediate(vec![
+                        act::core::types::ToolEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                             message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
-                    ]).await;
-                    return;
+                    ]);
                 }
             };
         };
@@ -418,14 +413,13 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             let __args_struct: #struct_name = match ::act_sdk::cbor::from_cbor(&call.arguments) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = __wit_writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                    return act::core::types::ToolResult::Immediate(vec![
+                        act::core::types::ToolEvent::Error(act::core::types::ToolError {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
                             message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
-                    ]).await;
-                    return;
+                    ]);
                 }
             };
         };
@@ -446,41 +440,38 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         quote! { #call_expr }
     };
 
-    // Context creation (if needed)
-    let ctx_setup = if tool.has_context {
-        if let Some(metadata_type) = &tool.metadata_type {
-            quote! {
-                let __metadata_val: #metadata_type = {
-                    let mut __map = ::act_sdk::__private::serde_json::Map::new();
-                    for (k, v) in &call.metadata {
-                        if let Ok(val) = ::act_sdk::cbor::from_cbor::<::act_sdk::__private::serde_json::Value>(v) {
-                            __map.insert(k.clone(), val);
-                        }
+    // Context creation (if needed). For streaming tools this must happen inside
+    // the spawned task, so we emit it there; for non-streaming it's unused.
+    let metadata_parse = if let Some(metadata_type) = &tool.metadata_type {
+        quote! {
+            let __metadata_val: #metadata_type = {
+                let mut __map = ::act_sdk::__private::serde_json::Map::new();
+                for (k, v) in &call.metadata {
+                    if let Ok(val) = ::act_sdk::cbor::from_cbor::<::act_sdk::__private::serde_json::Value>(v) {
+                        __map.insert(k.clone(), val);
                     }
-                    let __metadata_json = ::act_sdk::__private::serde_json::Value::Object(__map);
-                    match ::act_sdk::__private::serde_json::from_value::<#metadata_type>(__metadata_json) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            let _ = __wit_writer.write_all(vec![
-                                act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                                    kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                    message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize metadata: {}", e)),
-                                    metadata: vec![],
-                                })
-                            ]).await;
-                            return;
-                        }
+                }
+                let __metadata_json = ::act_sdk::__private::serde_json::Value::Object(__map);
+                match ::act_sdk::__private::serde_json::from_value::<#metadata_type>(__metadata_json) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = __wit_writer.write_all(vec![
+                            act::core::types::ToolEvent::Error(act::core::types::ToolError {
+                                kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
+                                message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize metadata: {}", e)),
+                                metadata: vec![],
+                            })
+                        ]).await;
+                        return;
                     }
-                };
-                let mut __ctx = ::act_sdk::ActContext::__new(__metadata_val);
-            }
-        } else {
-            quote! {
-                let mut __ctx = ::act_sdk::ActContext::__new(());
-            }
+                }
+            };
+            let mut __ctx = ::act_sdk::ActContext::__new(__metadata_val);
         }
     } else {
-        quote! {}
+        quote! {
+            let mut __ctx = ::act_sdk::ActContext::__new(());
+        }
     };
 
     // Decide whether to use IntoResponse trait or auto-CBOR encoding.
@@ -493,7 +484,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     let ok_response = if use_into_response {
         quote! {
             use ::act_sdk::IntoResponse;
-            let __response_events = __val.into_stream_events(__default_lang);
+            let __response_events = __val.into_tool_events(__default_lang);
         }
     } else {
         quote! {
@@ -501,65 +492,66 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         }
     };
 
-    // Post-call: drain context events + handle result, write to WIT stream
-    let post_call = if tool.has_context {
+    if tool.has_context {
+        // Streaming arm: spawn a writer task, return Streaming(reader).
+        // Arguments are deserialized up-front (outside the spawn) so that
+        // parse errors become an immediate error without starting a stream.
         quote! {
-            // Drain buffered context events
-            let __ctx_events = __ctx.__take_events();
-            let mut __wit_events: Vec<act::core::types::StreamEvent> = __ctx_events
-                .into_iter()
-                .map(|e| __raw_to_wit(e))
-                .collect();
-
-            match __result {
-                Ok(__val) => {
-                    #ok_response
-                    __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
-                }
-                Err(__err) => {
-                    __wit_events.push(act::core::types::StreamEvent::Error(act::core::types::ToolError {
-                        kind: __err.kind.clone(),
-                        message: act::core::types::LocalizedString::Plain(__err.message.clone()),
-                        metadata: vec![],
-                    }));
-                }
-            }
-            if !__wit_events.is_empty() {
-                let _ = __wit_writer.write_all(__wit_events).await;
-            }
-        }
-    } else {
-        quote! {
-            match __result {
-                Ok(__val) => {
-                    #ok_response
-                    let __wit_events: Vec<act::core::types::StreamEvent> = __response_events
+            #tool_name => {
+                #deser_code
+                let (mut __wit_writer, __reader) = wit_stream::new::<act::core::types::ToolEvent>();
+                wit_bindgen::spawn(async move {
+                    #metadata_parse
+                    let __result = #awaited_call;
+                    let __ctx_events = __ctx.__take_events();
+                    let mut __wit_events: Vec<act::core::types::ToolEvent> = __ctx_events
                         .into_iter()
                         .map(|e| __raw_to_wit(e))
                         .collect();
+                    match __result {
+                        Ok(__val) => {
+                            #ok_response
+                            __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
+                        }
+                        Err(__err) => {
+                            __wit_events.push(act::core::types::ToolEvent::Error(act::core::types::ToolError {
+                                kind: __err.kind.clone(),
+                                message: act::core::types::LocalizedString::Plain(__err.message.clone()),
+                                metadata: vec![],
+                            }));
+                        }
+                    }
                     if !__wit_events.is_empty() {
                         let _ = __wit_writer.write_all(__wit_events).await;
                     }
-                }
-                Err(__err) => {
-                    let _ = __wit_writer.write_all(vec![
-                        act::core::types::StreamEvent::Error(act::core::types::ToolError {
+                });
+                act::core::types::ToolResult::Streaming(__reader)
+            }
+        }
+    } else {
+        // Immediate arm: compute result synchronously, return Immediate(events).
+        quote! {
+            #tool_name => {
+                #deser_code
+                let __result = #awaited_call;
+                match __result {
+                    Ok(__val) => {
+                        #ok_response
+                        let __wit_events: Vec<act::core::types::ToolEvent> = __response_events
+                            .into_iter()
+                            .map(|e| __raw_to_wit(e))
+                            .collect();
+                        act::core::types::ToolResult::Immediate(__wit_events)
+                    }
+                    Err(__err) => act::core::types::ToolResult::Immediate(vec![
+                        act::core::types::ToolEvent::Error(act::core::types::ToolError {
                             kind: __err.kind.clone(),
                             message: act::core::types::LocalizedString::Plain(__err.message.clone()),
                             metadata: vec![],
                         })
-                    ]).await;
+                    ])
                 }
             }
-        }
-    };
-
-    quote! {
-        #tool_name => {
-            #ctx_setup
-            #deser_code
-            let __result = #awaited_call;
-            #post_call
         }
     }
 }

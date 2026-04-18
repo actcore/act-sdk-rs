@@ -7,15 +7,6 @@ wit_bindgen::generate!({
 use act::core::types::*;
 use exports::act::core::tool_provider::Guest;
 
-/// Create a response stream from a list of events.
-fn respond(events: Vec<StreamEvent>) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
-    let (mut writer, reader) = wit_stream::new::<StreamEvent>();
-    wit_bindgen::spawn(async move {
-        writer.write_all(events).await;
-    });
-    reader
-}
-
 /// Encode a value as CBOR bytes.
 fn to_cbor(value: &serde_json::Value) -> Vec<u8> {
     let mut buf = Vec::new();
@@ -44,16 +35,12 @@ impl Guest for Counter {
                 name: "count".to_string(),
                 description: LocalizedString::Plain("Count from 1 to N, emitting each number as a separate event".to_string()),
                 parameters_schema: r#"{"type":"object","properties":{"n":{"type":"integer","description":"Number to count to (default 5)"}}}"#.to_string(),
-                metadata: vec![
-                    ("std:streaming".to_string(), to_cbor(&serde_json::Value::Bool(true))),
-                ],
+                metadata: vec![],
             }],
         })
     }
 
-    async fn call_tool(
-        call: ToolCall,
-    ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
+    async fn call_tool(call: ToolCall) -> ToolResult {
         let events = match call.name.as_str() {
             "count" => {
                 let args = from_cbor(&call.arguments);
@@ -61,7 +48,7 @@ impl Guest for Counter {
 
                 (1..=n)
                     .map(|i| {
-                        StreamEvent::Content(ContentPart {
+                        ToolEvent::Content(ContentPart {
                             data: format!("Count: {i}").into_bytes(),
                             mime_type: Some("text/plain".to_string()),
                             metadata: vec![
@@ -75,13 +62,13 @@ impl Guest for Counter {
                     })
                     .collect()
             }
-            other => vec![StreamEvent::Error(ToolError {
+            other => vec![ToolEvent::Error(ToolError {
                 kind: "std:not-found".to_string(),
                 message: LocalizedString::Plain(format!("Tool '{other}' not found")),
                 metadata: vec![],
             })],
         };
 
-        respond(events)
+        ToolResult::Immediate(events)
     }
 }

@@ -31,8 +31,8 @@ fn to_cbor(value: &serde_json::Value) -> Vec<u8> {
     buf
 }
 
-fn make_error(kind: &str, message: &str) -> StreamEvent {
-    StreamEvent::Error(ToolError {
+fn make_error(kind: &str, message: &str) -> ToolEvent {
+    ToolEvent::Error(ToolError {
         kind: kind.to_string(),
         message: LocalizedString::Plain(message.to_string()),
         metadata: vec![],
@@ -69,26 +69,16 @@ impl Guest for HttpClient {
         })
     }
 
-    async fn call_tool(
-        call: ToolCall,
-    ) -> wit_bindgen::rt::async_support::StreamReader<StreamEvent> {
-        let (mut writer, reader) = wit_stream::new::<StreamEvent>();
-        let arguments = call.arguments;
-        let name = call.name;
-
-        wit_bindgen::spawn(async move {
-            let event = match name.as_str() {
-                "fetch" => do_fetch(&arguments).await,
-                other => make_error("std:not-found", &format!("Tool '{other}' not found")),
-            };
-            writer.write_all(vec![event]).await;
-        });
-
-        reader
+    async fn call_tool(call: ToolCall) -> ToolResult {
+        let event = match call.name.as_str() {
+            "fetch" => do_fetch(&call.arguments).await,
+            other => make_error("std:not-found", &format!("Tool '{other}' not found")),
+        };
+        ToolResult::Immediate(vec![event])
     }
 }
 
-async fn do_fetch(arguments: &[u8]) -> StreamEvent {
+async fn do_fetch(arguments: &[u8]) -> ToolEvent {
     let args: FetchArgs = match ciborium::from_reader(arguments) {
         Ok(a) => a,
         Err(e) => return make_error("std:invalid-args", &format!("Invalid arguments: {e}")),
@@ -191,7 +181,7 @@ async fn do_fetch(arguments: &[u8]) -> StreamEvent {
         "body": body_text,
     });
 
-    StreamEvent::Content(ContentPart {
+    ToolEvent::Content(ContentPart {
         data: to_cbor(&result),
         mime_type: Some("application/json".to_string()),
         metadata: vec![],

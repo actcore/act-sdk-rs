@@ -1,6 +1,6 @@
 /// Raw stream event before conversion to WIT types.
 /// Used internally by ActContext; the generated code converts to WIT StreamEvent.
-pub enum RawStreamEvent {
+pub enum RawToolEvent {
     Content {
         data: Vec<u8>,
         mime_type: Option<String>,
@@ -19,7 +19,7 @@ pub enum RawStreamEvent {
 /// written to the WIT stream after the tool function returns.
 pub struct ActContext<C = ()> {
     metadata: C,
-    events: Vec<RawStreamEvent>,
+    events: Vec<RawToolEvent>,
 }
 
 impl<C> ActContext<C> {
@@ -65,7 +65,7 @@ impl<C> ActContext<C> {
         mime_type: Option<String>,
         metadata: Vec<(String, Vec<u8>)>,
     ) {
-        self.events.push(RawStreamEvent::Content {
+        self.events.push(RawToolEvent::Content {
             data,
             mime_type,
             metadata,
@@ -74,7 +74,7 @@ impl<C> ActContext<C> {
 
     /// Drain all buffered events. Called by generated code.
     #[doc(hidden)]
-    pub fn __take_events(&mut self) -> Vec<RawStreamEvent> {
+    pub fn __take_events(&mut self) -> Vec<RawToolEvent> {
         std::mem::take(&mut self.events)
     }
 }
