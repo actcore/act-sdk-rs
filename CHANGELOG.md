@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgrade to `act:core@0.3.0`. `call-tool` now returns the `tool-result` variant (`immediate(list<tool-event>)` / `streaming(stream<tool-event>)`) instead of `stream<stream-event>`. Non-streaming tools no longer spawn a writer task — the macro returns `Immediate` directly.
 - Rename `StreamEvent` → `ToolEvent`, `RawStreamEvent` → `RawToolEvent`, and `IntoResponse::into_stream_events` → `into_tool_events`.
 - Vendor the `act:core` WIT directly (unvendored the old `act-wit` git submodule).
+- Bump `wit-bindgen` to 0.57.
 
 ### Removed
 
