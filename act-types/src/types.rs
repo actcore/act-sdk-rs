@@ -216,6 +216,32 @@ pub struct FilesystemCap {
         skip_serializing_if = "Option::is_none"
     )]
     pub mount_root: Option<String>,
+
+    /// Paths the component needs access to, each with a required mode.
+    /// Empty = zero filesystem access. To declare broad access, use
+    /// `allow = [{ path = "**", mode = "rw" }]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<FilesystemAllow>,
+}
+
+/// One path × mode entry in a `[std.capabilities."wasi:filesystem"].allow` array.
+/// Both fields are required.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FilesystemAllow {
+    /// Glob pattern (matches the user-policy `allow` / `deny` shape).
+    pub path: String,
+    /// Access mode the component requests.
+    pub mode: FsMode,
+}
+
+/// Filesystem access mode a component declares for a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FsMode {
+    /// Read-only.
+    Ro,
+    /// Read-write.
+    Rw,
 }
 
 /// Parameters for the `wasi:http` capability.
@@ -483,6 +509,7 @@ mod tests {
         info.std.capabilities.http = Some(HttpCap {});
         info.std.capabilities.filesystem = Some(FilesystemCap {
             mount_root: Some("/data".to_string()),
+            ..Default::default()
         });
 
         let mut buf = Vec::new();
@@ -533,5 +560,57 @@ mod tests {
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
         assert!(decoded.std.capabilities.has("acme:gpu"));
         assert_eq!(decoded.std.capabilities.other["acme:gpu"]["cores"], 8);
+    }
+
+    #[test]
+    fn filesystem_cap_with_allow_roundtrips() {
+        let toml_input = r#"
+[std.capabilities."wasi:filesystem"]
+description = "test"
+
+[[std.capabilities."wasi:filesystem".allow]]
+path = "/etc/**"
+mode = "ro"
+
+[[std.capabilities."wasi:filesystem".allow]]
+path = "/tmp/**"
+mode = "rw"
+"#;
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            std: Std,
+        }
+        #[derive(serde::Deserialize)]
+        struct Std {
+            capabilities: Capabilities,
+        }
+        let w: Wrap = toml::from_str(toml_input).expect("parses");
+        let fs = w.std.capabilities.filesystem.expect("fs declared");
+        assert_eq!(fs.allow.len(), 2);
+        assert_eq!(fs.allow[0].path, "/etc/**");
+        assert!(matches!(fs.allow[0].mode, FsMode::Ro));
+        assert_eq!(fs.allow[1].path, "/tmp/**");
+        assert!(matches!(fs.allow[1].mode, FsMode::Rw));
+    }
+
+    #[test]
+    fn filesystem_cap_requires_path_and_mode_on_each_entry() {
+        // Missing `mode` → parse error.
+        let bad = r#"
+[[std.capabilities."wasi:filesystem".allow]]
+path = "/tmp/**"
+"#;
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            std: Std,
+        }
+        #[derive(serde::Deserialize)]
+        struct Std {
+            capabilities: Capabilities,
+        }
+        assert!(
+            toml::from_str::<Wrap>(bad).is_err(),
+            "missing mode must fail"
+        );
     }
 }
