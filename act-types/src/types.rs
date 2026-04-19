@@ -245,8 +245,30 @@ pub enum FsMode {
 }
 
 /// Parameters for the `wasi:http` capability.
-#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-pub struct HttpCap {}
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct HttpCap {
+    /// Hosts / schemes / methods / ports the component needs to reach.
+    /// Empty = zero HTTP access. To declare broad access, use
+    /// `allow = [{ host = "*" }]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<HttpAllow>,
+}
+
+/// One entry in a `[std.capabilities."wasi:http"].allow` array.
+///
+/// `host` is required (exact match, `*.suffix` wildcard, or `*` for any).
+/// Other fields are optional narrowers. Declarations never carry `cidr`,
+/// `except_ports`, or `deny` — those are user-policy concerns.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HttpAllow {
+    pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub methods: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ports: Option<Vec<u16>>,
+}
 
 /// Parameters for the `wasi:sockets` capability.
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
@@ -506,7 +528,7 @@ mod tests {
     #[test]
     fn capabilities_cbor_roundtrip() {
         let mut info = ComponentInfo::new("test", "0.1.0", "test component");
-        info.std.capabilities.http = Some(HttpCap {});
+        info.std.capabilities.http = Some(HttpCap::default());
         info.std.capabilities.filesystem = Some(FilesystemCap {
             mount_root: Some("/data".to_string()),
             ..Default::default()
@@ -612,5 +634,80 @@ path = "/tmp/**"
             toml::from_str::<Wrap>(bad).is_err(),
             "missing mode must fail"
         );
+    }
+
+    #[test]
+    fn http_cap_with_allow_roundtrips() {
+        let toml_input = r#"
+[std.capabilities."wasi:http"]
+description = "Calls OpenAI + GitHub"
+
+[[std.capabilities."wasi:http".allow]]
+host = "api.openai.com"
+scheme = "https"
+methods = ["GET", "POST"]
+
+[[std.capabilities."wasi:http".allow]]
+host = "*.github.com"
+scheme = "https"
+"#;
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            std: Std,
+        }
+        #[derive(serde::Deserialize)]
+        struct Std {
+            capabilities: Capabilities,
+        }
+        let w: Wrap = toml::from_str(toml_input).expect("parses");
+        let http = w.std.capabilities.http.expect("http declared");
+        assert_eq!(http.allow.len(), 2);
+        assert_eq!(http.allow[0].host, "api.openai.com");
+        assert_eq!(http.allow[0].scheme.as_deref(), Some("https"));
+        assert_eq!(
+            http.allow[0].methods.as_deref(),
+            Some(&["GET".to_string(), "POST".to_string()][..])
+        );
+        assert_eq!(http.allow[1].host, "*.github.com");
+    }
+
+    #[test]
+    fn http_cap_requires_host_on_each_entry() {
+        // Missing `host` → parse error.
+        let bad = r#"
+[[std.capabilities."wasi:http".allow]]
+scheme = "https"
+"#;
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            std: Std,
+        }
+        #[derive(serde::Deserialize)]
+        struct Std {
+            capabilities: Capabilities,
+        }
+        assert!(
+            toml::from_str::<Wrap>(bad).is_err(),
+            "missing host must fail"
+        );
+    }
+
+    #[test]
+    fn http_cap_wildcard_host() {
+        // "*" is the explicit any-host wildcard.
+        let toml_input = r#"
+[[std.capabilities."wasi:http".allow]]
+host = "*"
+"#;
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            std: Std,
+        }
+        #[derive(serde::Deserialize)]
+        struct Std {
+            capabilities: Capabilities,
+        }
+        let w: Wrap = toml::from_str(toml_input).expect("parses");
+        assert_eq!(w.std.capabilities.http.unwrap().allow[0].host, "*");
     }
 }

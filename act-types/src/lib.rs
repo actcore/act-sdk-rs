@@ -7,5 +7,5 @@ pub mod types;
 
 pub use types::{
     ActError, ActResult, Capabilities, ComponentInfo, FilesystemAllow, FilesystemCap, FsMode,
-    HttpCap, LocalizedString, Metadata, SocketsCap, StdComponentInfo,
+    HttpAllow, HttpCap, LocalizedString, Metadata, SocketsCap, StdComponentInfo,
 };
