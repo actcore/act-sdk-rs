@@ -1,5 +1,5 @@
-/// Raw stream event before conversion to WIT types.
-/// Used internally by ActContext; the generated code converts to WIT StreamEvent.
+/// Raw tool event before conversion to WIT types.
+/// Used internally by ActContext; the generated code converts to WIT ToolEvent.
 pub enum RawToolEvent {
     Content {
         data: Vec<u8>,
