@@ -7,7 +7,7 @@ pub struct ToolInfo {
     /// The original function item (with #[act_tool] stripped).
     #[allow(dead_code)]
     pub func: ItemFn,
-    /// Tool name (fn name with underscores replaced by hyphens).
+    /// Tool name (snake_case, matches the Rust fn identifier).
     pub tool_name: String,
     /// Rust function identifier.
     pub fn_ident: syn::Ident,
@@ -100,7 +100,7 @@ fn extract_metadata_type(ty: &Type) -> Option<Type> {
 /// Parse a function with #[act_tool] attributes into ToolInfo.
 pub fn parse_tool_fn(func: &ItemFn, attrs: ToolAttrs) -> syn::Result<ToolInfo> {
     let fn_ident = func.sig.ident.clone();
-    let tool_name = fn_ident.to_string().replace('_', "-");
+    let tool_name = fn_ident.to_string();
     let is_async = func.sig.asyncness.is_some();
 
     // Collect parameters, identifying ActContext and #[args]
