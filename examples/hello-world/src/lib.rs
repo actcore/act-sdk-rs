@@ -4,8 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use act::core::types::*;
-use exports::act::core::tool_provider::Guest;
+use exports::act::tools::tool_provider::*;
 
 /// Decode CBOR bytes to a JSON value.
 fn from_cbor(bytes: &[u8]) -> serde_json::Value {
@@ -17,11 +16,7 @@ struct HelloWorld;
 export!(HelloWorld);
 
 impl Guest for HelloWorld {
-    async fn get_metadata_schema(_metadata: Vec<(String, Vec<u8>)>) -> Option<String> {
-        None
-    }
-
-    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, Error> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
@@ -33,10 +28,14 @@ impl Guest for HelloWorld {
         })
     }
 
-    async fn call_tool(call: ToolCall) -> ToolResult {
-        let event = match call.name.as_str() {
+    async fn call_tool(
+        name: String,
+        arguments: Vec<u8>,
+        _metadata: Vec<(String, Vec<u8>)>,
+    ) -> ToolResult {
+        let event = match name.as_str() {
             "greet" => {
-                let args = from_cbor(&call.arguments);
+                let args = from_cbor(&arguments);
                 let who = args.get("name").and_then(|v| v.as_str()).unwrap_or("world");
                 let greeting = format!("Hello, {who}!");
 
@@ -46,7 +45,7 @@ impl Guest for HelloWorld {
                     metadata: vec![],
                 })
             }
-            other => ToolEvent::Error(ToolError {
+            other => ToolEvent::Error(Error {
                 kind: "std:not-found".to_string(),
                 message: LocalizedString::Plain(format!("Tool '{other}' not found")),
                 metadata: vec![],

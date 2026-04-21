@@ -4,8 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use act::core::types::*;
-use exports::act::core::tool_provider::Guest;
+use exports::act::tools::tool_provider::*;
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -32,7 +31,7 @@ fn to_cbor(value: &serde_json::Value) -> Vec<u8> {
 }
 
 fn make_error(kind: &str, message: &str) -> ToolEvent {
-    ToolEvent::Error(ToolError {
+    ToolEvent::Error(Error {
         kind: kind.to_string(),
         message: LocalizedString::Plain(message.to_string()),
         metadata: vec![],
@@ -44,11 +43,7 @@ struct HttpClient;
 export!(HttpClient);
 
 impl Guest for HttpClient {
-    async fn get_metadata_schema(_metadata: Vec<(String, Vec<u8>)>) -> Option<String> {
-        None
-    }
-
-    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, Error> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
@@ -69,9 +64,13 @@ impl Guest for HttpClient {
         })
     }
 
-    async fn call_tool(call: ToolCall) -> ToolResult {
-        let event = match call.name.as_str() {
-            "fetch" => do_fetch(&call.arguments).await,
+    async fn call_tool(
+        name: String,
+        arguments: Vec<u8>,
+        _metadata: Vec<(String, Vec<u8>)>,
+    ) -> ToolResult {
+        let event = match name.as_str() {
+            "fetch" => do_fetch(&arguments).await,
             other => make_error("std:not-found", &format!("Tool '{other}' not found")),
         };
         ToolResult::Immediate(vec![event])

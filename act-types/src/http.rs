@@ -30,14 +30,6 @@ pub struct ListToolsResponse {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Request body for `POST /metadata-schema`.
-#[skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct MetadataSchemaRequest {
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
-}
-
 /// Request body for `POST /tools` and `QUERY /tools`.
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

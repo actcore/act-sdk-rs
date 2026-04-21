@@ -4,8 +4,7 @@ wit_bindgen::generate!({
     generate_all,
 });
 
-use act::core::types::*;
-use exports::act::core::tool_provider::Guest;
+use exports::act::tools::tool_provider::*;
 
 /// Encode a value as CBOR bytes.
 fn to_cbor(value: &serde_json::Value) -> Vec<u8> {
@@ -24,11 +23,7 @@ struct Counter;
 export!(Counter);
 
 impl Guest for Counter {
-    async fn get_metadata_schema(_metadata: Vec<(String, Vec<u8>)>) -> Option<String> {
-        None
-    }
-
-    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, ToolError> {
+    async fn list_tools(_metadata: Vec<(String, Vec<u8>)>) -> Result<ListToolsResponse, Error> {
         Ok(ListToolsResponse {
             metadata: vec![],
             tools: vec![ToolDefinition {
@@ -40,10 +35,14 @@ impl Guest for Counter {
         })
     }
 
-    async fn call_tool(call: ToolCall) -> ToolResult {
-        let events = match call.name.as_str() {
+    async fn call_tool(
+        name: String,
+        arguments: Vec<u8>,
+        _metadata: Vec<(String, Vec<u8>)>,
+    ) -> ToolResult {
+        let events = match name.as_str() {
             "count" => {
-                let args = from_cbor(&call.arguments);
+                let args = from_cbor(&arguments);
                 let n = args.get("n").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
                 (1..=n)
@@ -62,7 +61,7 @@ impl Guest for Counter {
                     })
                     .collect()
             }
-            other => vec![ToolEvent::Error(ToolError {
+            other => vec![ToolEvent::Error(Error {
                 kind: "std:not-found".to_string(),
                 message: LocalizedString::Plain(format!("Tool '{other}' not found")),
                 metadata: vec![],
