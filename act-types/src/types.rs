@@ -423,6 +423,10 @@ impl ActError {
     pub fn capability_denied(message: impl Into<String>) -> Self {
         Self::new(ERR_CAPABILITY_DENIED, message)
     }
+
+    pub fn session_not_found(message: impl Into<String>) -> Self {
+        Self::new(ERR_SESSION_NOT_FOUND, message)
+    }
 }
 
 impl std::fmt::Display for ActError {

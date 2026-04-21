@@ -9,6 +9,7 @@ pub const ERR_INVALID_ARGS: &str = "std:invalid-args";
 pub const ERR_TIMEOUT: &str = "std:timeout";
 pub const ERR_CAPABILITY_DENIED: &str = "std:capability-denied";
 pub const ERR_INTERNAL: &str = "std:internal";
+pub const ERR_SESSION_NOT_FOUND: &str = "std:session-not-found";
 
 // ── Component info namespace ──
 
@@ -43,6 +44,12 @@ pub const META_TRACEPARENT: &str = "std:traceparent";
 pub const META_TRACESTATE: &str = "std:tracestate";
 pub const META_REQUEST_ID: &str = "std:request-id";
 pub const META_PROGRESS_TOKEN: &str = "std:progress-token";
+pub const META_SESSION_ID: &str = "std:session-id";
+pub const META_AGENT_ID: &str = "std:agent-id";
+
+// ── Session-related tool definition metadata keys ──
+
+pub const META_SESSION_OP: &str = "std:session-op";
 
 // ── Bridge metadata keys ──
 

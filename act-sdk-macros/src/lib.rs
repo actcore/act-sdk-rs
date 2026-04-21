@@ -96,6 +96,35 @@ pub fn act_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
+/// Mark a function as `act:sessions/session-provider.open-session`.
+///
+/// Inside `#[act_component]`, the component macro picks up this annotation,
+/// generates the `session-provider` Guest impl, and derives the
+/// `get-open-session-args-schema` JSON Schema from the function's argument
+/// type via `schemars::JsonSchema`.
+///
+/// Signature: `fn open(args: T) -> ActResult<String>` (sync or async). `T`
+/// must implement `serde::Deserialize` and `schemars::JsonSchema`. The
+/// returned `String` is the session-id the host will use in subsequent
+/// capability calls.
+///
+/// Outside `#[act_component]`, this attribute is a no-op pass-through.
+#[proc_macro_attribute]
+pub fn session_open(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+/// Mark a function as `act:sessions/session-provider.close-session`.
+///
+/// Signature: `fn close(session_id: String)`. Synchronous, no return value
+/// (matches the WIT close-session signature).
+///
+/// Outside `#[act_component]`, this attribute is a no-op pass-through.
+#[proc_macro_attribute]
+pub fn session_close(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
 /// Embed an Agent Skills directory as an `act:skill` WASM custom section.
 ///
 /// Reads the directory at compile time, packs it as an uncompressed tar archive,

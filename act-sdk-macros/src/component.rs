@@ -28,6 +28,9 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Extract tool functions from the module
     let tools = extract_tools(module)?;
 
+    // Extract optional session-provider hooks
+    let session_hooks = extract_session_hooks(module)?;
+
     // Collect user items from the module (excluding #[act_tool] attrs but keeping fn bodies)
     let user_items = collect_user_items(module);
 
@@ -74,6 +77,12 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         .iter()
         .filter(|t| t.struct_args.is_none() && !t.args.is_empty())
         .map(gen_arg_struct);
+
+    // Generate session-provider Guest impl, if hooks are present.
+    let session_provider_impl = match &session_hooks {
+        Some(h) => gen_session_provider_impl(h),
+        None => quote! {},
+    };
 
     // Track act.toml so cargo rebuilds when it changes.
     let manifest_tracking = if manifest_path.exists() {
@@ -149,6 +158,8 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
 
         export!(__ActComponent);
 
+        #session_provider_impl
+
         impl exports::act::tools::tool_provider::Guest for __ActComponent {
             async fn list_tools(
                 _metadata: Vec<(String, Vec<u8>)>,
@@ -216,9 +227,14 @@ fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
         for item in mod_items {
             match item {
                 Item::Fn(func) => {
-                    // Strip #[act_tool] attribute but keep the function
+                    // Strip #[act_tool], #[session_open], and #[session_close]
+                    // attributes but keep the function bodies.
                     let mut clean_func = func.clone();
-                    clean_func.attrs.retain(|a| !a.path().is_ident("act_tool"));
+                    clean_func.attrs.retain(|a| {
+                        !a.path().is_ident("act_tool")
+                            && !a.path().is_ident("session_open")
+                            && !a.path().is_ident("session_close")
+                    });
                     // Strip #[doc] and #[args] attributes from function parameters
                     for input in &mut clean_func.sig.inputs {
                         if let syn::FnArg::Typed(pat_type) = input {
@@ -554,6 +570,226 @@ fn gen_args_struct_ident(fn_ident: &syn::Ident) -> syn::Ident {
         })
         .collect::<String>();
     format_ident!("__{}Args", pascal)
+}
+
+// ── session-provider hook extraction ──────────────────────────────────────
+
+/// Captured `#[session_open]` and `#[session_close]` functions.
+struct SessionHooks {
+    open_fn_ident: syn::Ident,
+    open_args_ty: syn::Type,
+    open_is_async: bool,
+    close_fn_ident: syn::Ident,
+    close_is_async: bool,
+}
+
+/// Scan the module body for `#[session_open]` and `#[session_close]`
+/// markers and capture the function metadata needed to generate the
+/// session-provider Guest impl.
+///
+/// Both hooks are required together. Returns `None` if neither is present;
+/// returns an error if exactly one is present (mismatch is a user error).
+fn extract_session_hooks(module: &ItemMod) -> syn::Result<Option<SessionHooks>> {
+    let Some((_, items)) = &module.content else {
+        return Ok(None);
+    };
+
+    let mut open: Option<(syn::Ident, syn::Type, bool)> = None;
+    let mut close: Option<(syn::Ident, bool)> = None;
+
+    for item in items {
+        let Item::Fn(func) = item else { continue };
+
+        let has_open = func.attrs.iter().any(|a| a.path().is_ident("session_open"));
+        let has_close = func
+            .attrs
+            .iter()
+            .any(|a| a.path().is_ident("session_close"));
+
+        if has_open && has_close {
+            return Err(syn::Error::new_spanned(
+                &func.sig.ident,
+                "function cannot be both #[session_open] and #[session_close]",
+            ));
+        }
+
+        if has_open {
+            if open.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &func.sig.ident,
+                    "only one #[session_open] function is allowed per component",
+                ));
+            }
+            let (_, args_ty) = parse_open_signature(func)?;
+            open = Some((
+                func.sig.ident.clone(),
+                args_ty,
+                func.sig.asyncness.is_some(),
+            ));
+        }
+
+        if has_close {
+            if close.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &func.sig.ident,
+                    "only one #[session_close] function is allowed per component",
+                ));
+            }
+            validate_close_signature(func)?;
+            close = Some((func.sig.ident.clone(), func.sig.asyncness.is_some()));
+        }
+    }
+
+    match (open, close) {
+        (Some((oi, oa, o_async)), Some((ci, c_async))) => Ok(Some(SessionHooks {
+            open_fn_ident: oi,
+            open_args_ty: oa,
+            open_is_async: o_async,
+            close_fn_ident: ci,
+            close_is_async: c_async,
+        })),
+        (Some((ident, _, _)), None) => Err(syn::Error::new_spanned(
+            ident,
+            "#[session_open] requires a paired #[session_close] in the same module",
+        )),
+        (None, Some((ident, _))) => Err(syn::Error::new_spanned(
+            ident,
+            "#[session_close] requires a paired #[session_open] in the same module",
+        )),
+        (None, None) => Ok(None),
+    }
+}
+
+/// Parse `#[session_open]` signature: must be `fn open(args: T) -> ActResult<String>`.
+/// Returns the args binding ident and its type.
+fn parse_open_signature(func: &syn::ItemFn) -> syn::Result<(syn::Ident, syn::Type)> {
+    let mut typed_inputs = func.sig.inputs.iter().filter_map(|i| match i {
+        syn::FnArg::Typed(pt) => Some(pt),
+        _ => None,
+    });
+    let Some(arg) = typed_inputs.next() else {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            "#[session_open] function must take one args parameter (e.g. `fn open(args: OpenArgs)`)",
+        ));
+    };
+    if typed_inputs.next().is_some() {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            "#[session_open] function must take exactly one args parameter",
+        ));
+    }
+    let ident = match arg.pat.as_ref() {
+        syn::Pat::Ident(pi) => pi.ident.clone(),
+        _ => syn::Ident::new("__args", proc_macro2::Span::call_site()),
+    };
+    Ok((ident, arg.ty.as_ref().clone()))
+}
+
+/// Validate `#[session_close]` signature: must be `fn close(session_id: String)`.
+/// Must be sync because the WIT close-session is sync.
+fn validate_close_signature(func: &syn::ItemFn) -> syn::Result<()> {
+    if func.sig.asyncness.is_some() {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            "#[session_close] function must be sync (WIT close-session is sync)",
+        ));
+    }
+    let typed_count = func
+        .sig
+        .inputs
+        .iter()
+        .filter(|i| matches!(i, syn::FnArg::Typed(_)))
+        .count();
+    if typed_count != 1 {
+        return Err(syn::Error::new_spanned(
+            &func.sig,
+            "#[session_close] function must take exactly one parameter (`session_id: String`)",
+        ));
+    }
+    Ok(())
+}
+
+/// Generate the `act:sessions/session-provider` Guest impl.
+fn gen_session_provider_impl(hooks: &SessionHooks) -> TokenStream {
+    let open_ident = &hooks.open_fn_ident;
+    let close_ident = &hooks.close_fn_ident;
+    let open_args_ty = &hooks.open_args_ty;
+
+    let open_call = if hooks.open_is_async {
+        quote! { #open_ident(__args).await }
+    } else {
+        quote! { #open_ident(__args) }
+    };
+
+    let _ = hooks.close_is_async; // close must be sync; validated up-front
+    let close_call = quote! { #close_ident(session_id) };
+
+    quote! {
+        impl exports::act::sessions::session_provider::Guest for __ActComponent {
+            async fn get_open_session_args_schema(
+                _metadata: Vec<(String, Vec<u8>)>,
+            ) -> Result<String, exports::act::sessions::session_provider::Error> {
+                let schema = ::act_sdk::__private::schemars::schema_for!(#open_args_ty);
+                ::act_sdk::__private::serde_json::to_string(&schema).map_err(|e| {
+                    exports::act::sessions::session_provider::Error {
+                        kind: ::act_sdk::constants::ERR_INTERNAL.to_string(),
+                        message: exports::act::tools::tool_provider::LocalizedString::Plain(
+                            format!("schema serialization failed: {e}")
+                        ),
+                        metadata: vec![],
+                    }
+                })
+            }
+
+            async fn open_session(
+                args: Vec<(String, Vec<u8>)>,
+                _metadata: Vec<(String, Vec<u8>)>,
+            ) -> Result<exports::act::sessions::session_provider::Session, exports::act::sessions::session_provider::Error> {
+                // Re-shape the metadata-style args (Vec<(String, CBOR)>) into a
+                // single CBOR map and decode into the user's args type.
+                let args_map: ::std::collections::BTreeMap<String, ::act_sdk::__private::serde_json::Value> = args
+                    .into_iter()
+                    .filter_map(|(k, v)| {
+                        ::act_sdk::cbor::from_cbor::<::act_sdk::__private::serde_json::Value>(&v)
+                            .ok()
+                            .map(|val| (k, val))
+                    })
+                    .collect();
+                let args_json = ::act_sdk::__private::serde_json::to_value(&args_map).unwrap_or(
+                    ::act_sdk::__private::serde_json::Value::Object(Default::default())
+                );
+                let __args: #open_args_ty = match ::act_sdk::__private::serde_json::from_value(args_json) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Err(exports::act::sessions::session_provider::Error {
+                            kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
+                            message: exports::act::tools::tool_provider::LocalizedString::Plain(
+                                format!("Failed to deserialize session args: {e}")
+                            ),
+                            metadata: vec![],
+                        });
+                    }
+                };
+
+                match #open_call {
+                    Ok(id) => Ok(exports::act::sessions::session_provider::Session {
+                        id,
+                        metadata: vec![],
+                    }),
+                    Err(err) => Err(exports::act::sessions::session_provider::Error {
+                        kind: err.kind.clone(),
+                        message: exports::act::tools::tool_provider::LocalizedString::Plain(err.message.clone()),
+                        metadata: vec![],
+                    }),
+                }
+            }
+
+            fn close_session(session_id: String) {
+                let _ = #close_call;
+            }
+        }
+    }
 }
 
 /// Generate a hidden #[derive(Deserialize, JsonSchema)] struct for individual-params tools.
