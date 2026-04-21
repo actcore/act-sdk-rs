@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-29
+
+### Changed
+- Migrate to the split WIT layout from `act-spec`: `act:core@0.4.0`
+  (cross-cutting types only) plus `act:tools@0.1.0` (tool-provider).
+- `#[act_component]` emits bindings against
+  `exports::act::tools::tool_provider::*` and uses the renamed `Error`
+  type (was `ToolError`).
+- `Guest::call_tool` takes flat `(name, arguments, metadata)` parameters
+  instead of a `ToolCall` record. Tool function bodies authored with
+  `#[act_tool]` are unaffected; raw-bindgen components need their
+  `Guest` impl updated.
+
+### Removed
+- `Guest::get_metadata_schema` — the corresponding WIT function is gone
+  in `act:tools@0.1.0`. A schema-discovery mechanism for per-call
+  metadata is planned for a future minor version.
+- `MetadataSchemaRequest` from `act-types::http` (no `/metadata-schema`
+  endpoint).
+
+### Migration
+Components on previous SDK versions need to:
+1. Bump to this SDK version.
+2. Run `wit-deps` (or sync `wit/deps/` manually) to pick up the new
+   WIT layout — `act-core` is types-only, `act-tools` is added.
+3. Rebuild — the world now exports `act:tools/tool-provider@0.1.0`.
+
 ## [0.5.0] - 2026-04-21
 
 ### Added
