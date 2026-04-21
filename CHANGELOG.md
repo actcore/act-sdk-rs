@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-21
+
+### Added
+
+- **`FilesystemCap.allow` + `FilesystemAllow`** — components declare the exact paths they need as glob patterns, each with a required `mode` of `"ro"` or `"rw"`. Exported `FsMode` enum (`Ro` / `Rw`) for use in manifests and downstream tools.
+- **`HttpCap.allow` + `HttpAllow`** — components declare HTTP peers by host (exact hostname, `*.suffix` wildcard, or `*` for any). Optional narrowers: `scheme`, `methods`, `ports`. No `cidr`, no `deny` — declarations are positive-only ceilings.
+
+### Changed
+
+- **Tool names now emit in snake_case.** Previously the proc macro replaced underscores with hyphens; now the raw identifier is used as-is. Components relying on the hyphen form must update any hardcoded tool-name expectations.
+- **`HttpCap` no longer derives `Copy`.** It now contains a `Vec<HttpAllow>`. Callers that copied the zero-sized struct must clone.
+- **Version bumped from 0.4.0 → 0.5.0** to align with act-cli 0.5.0. When the pair is used together, act-cli intersects the SDK-declared `allow` arrays with the user's policy as an enforcing ceiling — undeclared or empty-declared capability classes are hard-denied regardless of user policy.
+
+### Fixed
+
+- Stale reference to the old `StreamEvent` WIT type in `RawToolEvent`'s doc comment (the WIT type has been `ToolEvent` since `act:core@0.3.0`).
+
 ## [0.4.0] - 2026-04-18
 
 ### Changed
