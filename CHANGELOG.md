@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-06
+
+### Added
+- **act:sessions/session-provider macro support.** `wit/deps/act-sessions`
+  is bundled in the SDK; consumers symlink it like the other interfaces
+  and add `export act:sessions/session-provider@0.1.0;` to their
+  `world.wit`.
+- **`act_sdk::SessionRegistry<T>`** — interior-mutable id→state map for
+  components that maintain per-session state. Allocates ids as
+  `<prefix>_<n>`.
+- **`#[session_open]` and `#[session_close]` markers** — when both appear
+  inside `#[act_component]`, the macro generates the session-provider
+  Guest impl. `get-open-session-args-schema` is derived from the open
+  fn's args type via `JsonSchema`; `open-session` decodes metadata-shaped
+  args; `close-session` is a sync pass-through (per WIT).
+- `act_sdk::sessions::session_id_from_metadata` — pulls
+  `std:session-id` out of WIT metadata (CBOR-decoded).
+- New constants in `act_types::constants`: `META_SESSION_ID`,
+  `META_AGENT_ID`, `META_SESSION_OP`, `ERR_SESSION_NOT_FOUND`.
+  `ActError::session_not_found` helper.
+- New `act_types::http` wire types: `OpenSessionRequest`,
+  `OpenSessionResponse`. `error_kind_to_status` now maps
+  `std:session-not-found` to **404**.
+
+### Migration
+No breaking changes for tool-only components — the macro is opt-in
+through the new `#[session_open]`/`#[session_close]` markers and the
+extra `wit/deps/act-sessions` symlink.
+
 ## [0.6.0] - 2026-04-29
 
 ### Changed

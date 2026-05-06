@@ -104,11 +104,33 @@ pub struct ListResourcesResponse {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Request body for `POST /sessions`. Per ACT-SESSIONS §6.2.
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenSessionRequest {
+    /// Component-defined open-session args. JSON object whose keys map
+    /// 1:1 to `metadata` entries when sent across the WIT boundary.
+    pub arguments: serde_json::Value,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Response body for `POST /sessions`.
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenSessionResponse {
+    pub id: String,
+    /// Session-scoped metadata returned by the component.
+    #[serde(default)]
+    pub metadata: serde_json::Map<String, serde_json::Value>,
+}
+
 /// Map an ACT error kind to an HTTP status code per ACT-HTTP spec.
 pub fn error_kind_to_status(kind: &str) -> u16 {
     use crate::constants::*;
     match kind {
         ERR_NOT_FOUND => 404,
+        ERR_SESSION_NOT_FOUND => 404,
         ERR_INVALID_ARGS => 422,
         ERR_TIMEOUT => 504,
         ERR_CAPABILITY_DENIED => 403,
