@@ -270,9 +270,47 @@ pub struct HttpAllow {
     pub ports: Option<Vec<u16>>,
 }
 
-/// Parameters for the `wasi:sockets` capability.
-#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-pub struct SocketsCap {}
+/// Parameters for the `wasi:sockets` capability — raw TCP / UDP I/O.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SocketsCap {
+    /// Endpoints the component needs to reach. Empty = no socket access
+    /// (use `allow = [{ host = "*", ports = [...] }]` for broad access).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<SocketsAllow>,
+}
+
+/// One entry in a `[std.capabilities."wasi:sockets"].allow` array.
+///
+/// Exactly one of `host` or `cidr` is required. `ports` is required and
+/// must be non-empty — there is no "any port". `protocols` defaults to
+/// `["tcp", "udp"]` (both).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SocketsAllow {
+    /// Exact host, `*.suffix` wildcard, or `*` for any. Mutually
+    /// exclusive with `cidr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    /// CIDR (IPv4 or IPv6). Mutually exclusive with `host`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cidr: Option<String>,
+    /// Ports this rule applies to. Required, non-empty.
+    pub ports: Vec<u16>,
+    /// Protocols this rule applies to. Defaults to both.
+    #[serde(default = "default_socket_protocols")]
+    pub protocols: Vec<SocketProtocol>,
+}
+
+fn default_socket_protocols() -> Vec<SocketProtocol> {
+    vec![SocketProtocol::Tcp, SocketProtocol::Udp]
+}
+
+/// Raw socket protocol — TCP or UDP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SocketProtocol {
+    Tcp,
+    Udp,
+}
 
 /// Capability declarations from the `std:capabilities` map in `act:component`.
 ///
@@ -713,5 +751,47 @@ host = "*"
         }
         let w: Wrap = toml::from_str(toml_input).expect("parses");
         assert_eq!(w.std.capabilities.http.unwrap().allow[0].host, "*");
+    }
+
+    #[test]
+    fn sockets_allow_round_trip() {
+        let toml_input = r#"
+[std.capabilities."wasi:sockets"]
+allow = [
+    { host = "vnc.example.com", ports = [5900], protocols = ["tcp"] },
+    { cidr = "10.0.0.0/8", ports = [80, 443] },
+]
+"#;
+        #[derive(serde::Deserialize)]
+        struct W {
+            std: Wrap,
+        }
+        #[derive(serde::Deserialize)]
+        struct Wrap {
+            capabilities: Capabilities,
+        }
+        let w: W = toml::from_str(toml_input).unwrap();
+        let sockets = w.std.capabilities.sockets.expect("sockets declared");
+        assert_eq!(sockets.allow.len(), 2);
+
+        let a = &sockets.allow[0];
+        assert_eq!(a.host.as_deref(), Some("vnc.example.com"));
+        assert_eq!(a.cidr, None);
+        assert_eq!(a.ports, vec![5900]);
+        assert_eq!(a.protocols, vec![SocketProtocol::Tcp]);
+
+        let b = &sockets.allow[1];
+        assert_eq!(b.host, None);
+        assert_eq!(b.cidr.as_deref(), Some("10.0.0.0/8"));
+        assert_eq!(b.ports, vec![80, 443]);
+        assert_eq!(b.protocols, vec![SocketProtocol::Tcp, SocketProtocol::Udp]);
+    }
+
+    #[test]
+    fn sockets_cap_has_string() {
+        let mut c = Capabilities::default();
+        assert!(!c.has(crate::constants::CAP_SOCKETS));
+        c.sockets = Some(SocketsCap::default());
+        assert!(c.has(crate::constants::CAP_SOCKETS));
     }
 }
