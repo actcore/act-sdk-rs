@@ -296,12 +296,19 @@ pub struct SocketsAllow {
     /// Ports this rule applies to. Required, non-empty.
     pub ports: Vec<u16>,
     /// Protocols this rule applies to. Defaults to both.
-    #[serde(default = "default_socket_protocols")]
+    #[serde(
+        default = "default_socket_protocols",
+        skip_serializing_if = "is_default_protocols"
+    )]
     pub protocols: Vec<SocketProtocol>,
 }
 
 fn default_socket_protocols() -> Vec<SocketProtocol> {
     vec![SocketProtocol::Tcp, SocketProtocol::Udp]
+}
+
+fn is_default_protocols(v: &[SocketProtocol]) -> bool {
+    v == [SocketProtocol::Tcp, SocketProtocol::Udp]
 }
 
 /// Raw socket protocol — TCP or UDP.
@@ -793,5 +800,39 @@ allow = [
         assert!(!c.has(crate::constants::CAP_SOCKETS));
         c.sockets = Some(SocketsCap::default());
         assert!(c.has(crate::constants::CAP_SOCKETS));
+    }
+
+    #[test]
+    fn sockets_allow_default_protocols_not_emitted() {
+        // Manifest author omitted `protocols`: the default (tcp+udp) is
+        // applied on deserialize but MUST NOT leak back out on re-serialize,
+        // otherwise host-driven round-trips grow noise.
+        let toml_input = r#"
+[[allow]]
+host = "vnc.example.com"
+ports = [5900]
+"#;
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct W {
+            allow: Vec<SocketsAllow>,
+        }
+        let w: W = toml::from_str(toml_input).unwrap();
+        assert_eq!(
+            w.allow[0].protocols,
+            vec![SocketProtocol::Tcp, SocketProtocol::Udp]
+        );
+
+        let re = toml::to_string(&w).unwrap();
+        assert!(
+            !re.contains("protocols"),
+            "default protocols leaked into re-serialized output: {re}"
+        );
+
+        // And a second round-trip still parses cleanly.
+        let w2: W = toml::from_str(&re).unwrap();
+        assert_eq!(
+            w2.allow[0].protocols,
+            vec![SocketProtocol::Tcp, SocketProtocol::Udp]
+        );
     }
 }
