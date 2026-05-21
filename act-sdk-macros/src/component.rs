@@ -5,6 +5,44 @@ use syn::{Item, ItemMod};
 
 use crate::tool::{self, ToolAttrs, ToolInfo};
 
+/// Read and parse an `include!("path")` macro item's file path.
+/// Returns the parsed items from the file, or None if not a recognizable `include!`.
+///
+/// NOTE: Rust's `include!` resolves paths relative to the including source file.
+/// Since proc macros don't have direct access to the caller's file path, we look
+/// in both `CARGO_MANIFEST_DIR/src/<path>` and `CARGO_MANIFEST_DIR/<path>`.
+fn expand_include_item(mac_item: &syn::ItemMacro) -> Option<Vec<Item>> {
+    if !mac_item.mac.path.is_ident("include") {
+        return None;
+    }
+    // Parse the string literal argument: include!("path/to/file.rs")
+    let lit: syn::LitStr = syn::parse2(mac_item.mac.tokens.clone()).ok()?;
+    let file_path_str = lit.value();
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok()?;
+    let manifest_path = std::path::Path::new(&manifest_dir);
+
+    // Try src/<path> first (most common: include!("modules/task.rs") from src/lib.rs)
+    let in_src = manifest_path.join("src").join(&file_path_str);
+    // Fallback: path directly relative to CARGO_MANIFEST_DIR
+    let at_root = manifest_path.join(&file_path_str);
+
+    let full_path = if in_src.exists() {
+        in_src
+    } else if at_root.exists() {
+        at_root
+    } else {
+        return None;
+    };
+
+    // Read the file
+    let content = std::fs::read_to_string(&full_path).ok()?;
+
+    // Parse as a file (sequence of items)
+    let file: syn::File = syn::parse_str(&content).ok()?;
+    Some(file.items)
+}
+
 /// Attributes parsed from #[act_component(...)].
 /// All fields are optional — defaults are taken from Cargo.toml via env!().
 #[derive(Debug, FromMeta)]
@@ -201,67 +239,98 @@ fn extract_tools(module: &ItemMod) -> syn::Result<Vec<ToolInfo>> {
 
     if let Some((_, items)) = &module.content {
         for item in items {
-            if let Item::Fn(func) = item {
-                // Find #[act_tool] attribute
-                let tool_attr = func.attrs.iter().find(|a| a.path().is_ident("act_tool"));
-
-                if let Some(attr) = tool_attr {
-                    let attrs = ToolAttrs::from_meta(&attr.meta).map_err(syn::Error::from)?;
-                    let info = tool::parse_tool_fn(func, attrs)?;
-                    tools.push(info);
-                }
-            }
+            extract_tools_from_item(item, &mut tools)?;
         }
     }
 
     Ok(tools)
 }
 
+fn extract_tools_from_item(item: &Item, tools: &mut Vec<ToolInfo>) -> syn::Result<()> {
+    match item {
+        Item::Fn(func) => {
+            // Find #[act_tool] attribute
+            let tool_attr = func.attrs.iter().find(|a| a.path().is_ident("act_tool"));
+            if let Some(attr) = tool_attr {
+                let attrs = ToolAttrs::from_meta(&attr.meta).map_err(syn::Error::from)?;
+                let info = tool::parse_tool_fn(func, attrs)?;
+                tools.push(info);
+            }
+        }
+        Item::Macro(mac_item) => {
+            // Expand include!("path") and recurse
+            if let Some(expanded_items) = expand_include_item(mac_item) {
+                for sub_item in &expanded_items {
+                    extract_tools_from_item(sub_item, tools)?;
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Collect user items from the module, stripping #[act_tool] attributes from functions.
 /// Also rewrites `use super::*` to `use crate::*` since the module body is flattened to top level,
 /// and strips #[doc] attributes from function parameters (not allowed by rustc).
+/// Expands `include!("path")` macros inline so that tools in separate files are included.
 fn collect_user_items(module: &ItemMod) -> Vec<TokenStream> {
     let mut items = Vec::new();
 
     if let Some((_, mod_items)) = &module.content {
         for item in mod_items {
-            match item {
-                Item::Fn(func) => {
-                    // Strip #[act_tool], #[session_open], and #[session_close]
-                    // attributes but keep the function bodies.
-                    let mut clean_func = func.clone();
-                    clean_func.attrs.retain(|a| {
-                        !a.path().is_ident("act_tool")
-                            && !a.path().is_ident("session_open")
-                            && !a.path().is_ident("session_close")
-                    });
-                    // Strip #[doc] and #[args] attributes from function parameters
-                    for input in &mut clean_func.sig.inputs {
-                        if let syn::FnArg::Typed(pat_type) = input {
-                            pat_type.attrs.retain(|a| {
-                                !a.path().is_ident("doc") && !a.path().is_ident("args")
-                            });
-                        }
-                    }
-                    items.push(quote! { #clean_func });
-                }
-                Item::Use(u) => {
-                    // Rewrite `use super::*` and `use super::Foo` to nothing,
-                    // since the module is flattened and parent items are at the same level.
-                    if is_super_use(u) {
-                        // Skip — the items from "super" are already at crate level
-                        continue;
-                    }
-                    items.push(quote! { #u });
-                }
-                other => {
-                    items.push(quote! { #other });
-                }
-            }
+            collect_user_item(item, &mut items);
         }
     }
 
     items
+}
+
+fn collect_user_item(item: &Item, items: &mut Vec<TokenStream>) {
+    match item {
+        Item::Fn(func) => {
+            // Strip #[act_tool], #[session_open], and #[session_close]
+            // attributes but keep the function bodies.
+            let mut clean_func = func.clone();
+            clean_func.attrs.retain(|a| {
+                !a.path().is_ident("act_tool")
+                    && !a.path().is_ident("session_open")
+                    && !a.path().is_ident("session_close")
+            });
+            // Strip #[doc] and #[args] attributes from function parameters
+            for input in &mut clean_func.sig.inputs {
+                if let syn::FnArg::Typed(pat_type) = input {
+                    pat_type
+                        .attrs
+                        .retain(|a| !a.path().is_ident("doc") && !a.path().is_ident("args"));
+                }
+            }
+            items.push(quote! { #clean_func });
+        }
+        Item::Use(u) => {
+            // Rewrite `use super::*` and `use super::Foo` to nothing,
+            // since the module is flattened and parent items are at the same level.
+            if is_super_use(u) {
+                // Skip — the items from "super" are already at crate level
+                return;
+            }
+            items.push(quote! { #u });
+        }
+        Item::Macro(mac_item) => {
+            // Expand include!("path") inline — this is the key mechanism that
+            // allows per-module files to define #[act_tool] functions.
+            if let Some(expanded_items) = expand_include_item(mac_item) {
+                for sub_item in &expanded_items {
+                    collect_user_item(sub_item, items);
+                }
+            } else {
+                items.push(quote! { #mac_item });
+            }
+        }
+        other => {
+            items.push(quote! { #other });
+        }
+    }
 }
 
 /// Check if a `use` item refers to `super::`.
