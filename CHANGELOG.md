@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-24
+
+### Added
+- **`include!` support in `#[act_component]`.** `#[act_tool]` functions can now
+  live in separate files and be pulled into the component module via
+  `include!("path")`, so large components (e.g. 100+ tools) can be split across
+  many modules instead of one giant `lib.rs`. Included paths resolve relative to
+  `src/`.
+- **`wasi:sockets` capability declarations.** `SocketsCap` now carries `allow`
+  entries (host/CIDR + required ports + optional protocols, defaulting to
+  TCP+UDP), declaring the capability ceiling for raw TCP/UDP I/O. Default
+  protocols are omitted on serialization to keep manifest round-trips clean.
+
 ## [0.7.0] - 2026-05-06
 
 ### Added
