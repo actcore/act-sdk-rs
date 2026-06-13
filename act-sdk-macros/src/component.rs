@@ -569,7 +569,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             #tool_name => {
                 #deser_code
                 let (mut __wit_writer, __reader) = wit_stream::new::<exports::act::tools::tool_provider::ToolEvent>();
-                wit_bindgen::spawn(async move {
+                wit_bindgen::spawn_local(async move {
                     #metadata_parse
                     let __result = #awaited_call;
                     let __ctx_events = __ctx.__take_events();

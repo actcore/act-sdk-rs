@@ -72,7 +72,7 @@ mod component {
         let body_contents = if let Some(body_str) = &args.body {
             let (mut body_writer, body_reader) = wasip3::wit_stream::new::<u8>();
             let body_bytes = body_str.as_bytes().to_vec();
-            wit_bindgen::spawn(async move {
+            wit_bindgen::spawn_local(async move {
                 body_writer.write_all(body_bytes).await;
             });
             Some(body_reader)
