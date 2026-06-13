@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-13
+
+### Changed
+
+- Adopted the WASI 0.3 (final) toolchain. The SDK now builds against
+  `wit-bindgen` 0.58, and the HTTP examples target `wasip3` 0.7.0 (the
+  ratified `wasi:0.3.0`). **Breaking:** components built with the SDK must
+  bump their own `wit-bindgen` dependency to 0.58.
+- The tool-call macro now generates `wit_bindgen::spawn_local` (the function
+  was renamed from `spawn` in wit-bindgen 0.58).
+
 ## [0.7.1] - 2026-05-24
 
 ### Added
