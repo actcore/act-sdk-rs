@@ -1,12 +1,20 @@
 use crate::context::RawToolEvent;
 
 /// Trait for types that can be converted into stream events.
-pub trait IntoResponse {
-    fn into_tool_events(self, default_language: &str) -> Vec<RawToolEvent>;
+///
+/// Specific impls use a by-value `self` receiver so that method resolution
+/// prefers them over the [`IntoToolResponseViaSerialize`] blanket (which uses
+/// `&self`). This is the stable "autoref specialization" pattern.
+///
+/// To return a custom content type, implement this trait on your type with a
+/// by-value receiver. Do NOT implement [`IntoToolResponseViaSerialize`] — the
+/// blanket impl already covers every [`serde::Serialize`] type (→ CBOR).
+pub trait IntoToolResponse {
+    fn into_tool_response(self, default_language: &str) -> Vec<RawToolEvent>;
 }
 
-impl IntoResponse for String {
-    fn into_tool_events(self, _default_language: &str) -> Vec<RawToolEvent> {
+impl IntoToolResponse for String {
+    fn into_tool_response(self, _default_language: &str) -> Vec<RawToolEvent> {
         vec![RawToolEvent::Content {
             data: self.into_bytes(),
             mime_type: Some(crate::constants::MIME_TEXT.to_string()),
@@ -15,20 +23,20 @@ impl IntoResponse for String {
     }
 }
 
-impl IntoResponse for &str {
-    fn into_tool_events(self, default_language: &str) -> Vec<RawToolEvent> {
-        self.to_string().into_tool_events(default_language)
+impl IntoToolResponse for &str {
+    fn into_tool_response(self, default_language: &str) -> Vec<RawToolEvent> {
+        self.to_string().into_tool_response(default_language)
     }
 }
 
-impl IntoResponse for () {
-    fn into_tool_events(self, _default_language: &str) -> Vec<RawToolEvent> {
+impl IntoToolResponse for () {
+    fn into_tool_response(self, _default_language: &str) -> Vec<RawToolEvent> {
         vec![]
     }
 }
 
-impl IntoResponse for Vec<u8> {
-    fn into_tool_events(self, _default_language: &str) -> Vec<RawToolEvent> {
+impl IntoToolResponse for Vec<u8> {
+    fn into_tool_response(self, _default_language: &str) -> Vec<RawToolEvent> {
         vec![RawToolEvent::Content {
             data: self,
             mime_type: Some(crate::constants::MIME_OCTET_STREAM.to_string()),
@@ -40,8 +48,8 @@ impl IntoResponse for Vec<u8> {
 /// Wrapper that serializes the inner value as JSON with `application/json` MIME type.
 pub struct Json<T>(pub T);
 
-impl<T: serde::Serialize> IntoResponse for Json<T> {
-    fn into_tool_events(self, _default_language: &str) -> Vec<RawToolEvent> {
+impl<T: serde::Serialize> IntoToolResponse for Json<T> {
+    fn into_tool_response(self, _default_language: &str) -> Vec<RawToolEvent> {
         vec![RawToolEvent::Content {
             data: serde_json::to_vec(&self.0).unwrap_or_default(),
             mime_type: Some(crate::constants::MIME_JSON.to_string()),
@@ -55,8 +63,8 @@ impl<T: serde::Serialize> IntoResponse for Json<T> {
 /// The first field is the MIME type string, the second is the raw data.
 pub struct Content(pub &'static str, pub Vec<u8>);
 
-impl IntoResponse for Content {
-    fn into_tool_events(self, _default_language: &str) -> Vec<RawToolEvent> {
+impl IntoToolResponse for Content {
+    fn into_tool_response(self, _default_language: &str) -> Vec<RawToolEvent> {
         vec![RawToolEvent::Content {
             data: self.1,
             mime_type: Some(self.0.to_string()),
@@ -65,11 +73,25 @@ impl IntoResponse for Content {
     }
 }
 
+/// Autoref-specialization fallback: any `Serialize` value that has no specific
+/// `IntoToolResponse` impl is CBOR-encoded. The `&self` receiver makes method
+/// resolution prefer a by-value `IntoToolResponse` impl when one exists.
+#[doc(hidden)]
+pub trait IntoToolResponseViaSerialize {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_tool_response(&self, default_language: &str) -> Vec<RawToolEvent>;
+}
+
+impl<T: serde::Serialize> IntoToolResponseViaSerialize for T {
+    fn into_tool_response(&self, default_language: &str) -> Vec<RawToolEvent> {
+        cbor_encode_response(self, default_language)
+    }
+}
+
 /// Encode a serializable value as CBOR and wrap it as a stream event.
 ///
-/// Used by the `#[act_tool]` macro for automatic CBOR serialization of
-/// structured return types.
-#[doc(hidden)]
+/// Called by [`IntoToolResponseViaSerialize`]'s blanket impl and available
+/// as a direct helper for generated code.
 pub fn cbor_encode_response<T: serde::Serialize>(
     val: &T,
     _default_language: &str,
@@ -88,7 +110,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn extract_content(events: Vec<RawToolEvent>) -> (Vec<u8>, Option<String>) {
+    fn extract(events: Vec<RawToolEvent>) -> (Vec<u8>, Option<String>) {
         match events.into_iter().next().unwrap() {
             RawToolEvent::Content {
                 data, mime_type, ..
@@ -98,46 +120,70 @@ mod tests {
     }
 
     #[test]
-    fn json_wrapper_produces_json_mime() {
+    fn string_is_text_plain() {
+        let (data, mime) = extract("hello".to_string().into_tool_response("en"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_TEXT));
+        assert_eq!(data, b"hello");
+    }
+
+    #[test]
+    fn str_ref_is_text_plain() {
+        let s: &str = "hello";
+        let (data, mime) = extract(s.into_tool_response("en"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_TEXT));
+        assert_eq!(data, b"hello");
+    }
+
+    #[test]
+    fn unit_is_empty() {
+        assert!(().into_tool_response("en").is_empty());
+    }
+
+    #[test]
+    fn vec_u8_is_octet_stream() {
+        let (_d, mime) = extract(vec![1u8, 2, 3].into_tool_response("en"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_OCTET_STREAM));
+    }
+
+    #[test]
+    fn content_keeps_explicit_mime() {
+        let (data, mime) = extract(Content("image/png", vec![0x89]).into_tool_response("en"));
+        assert_eq!(mime.as_deref(), Some("image/png"));
+        assert_eq!(data, vec![0x89]);
+    }
+
+    #[test]
+    fn json_wrapper_is_json_mime() {
         let value = json!({"rows": [1, 2, 3]});
-        let events = Json(value.clone()).into_tool_events("en");
-        let (data, mime) = extract_content(events);
+        let (data, mime) = extract(Json(value.clone()).into_tool_response("en"));
         assert_eq!(mime.as_deref(), Some(crate::constants::MIME_JSON));
         let parsed: serde_json::Value = serde_json::from_slice(&data).unwrap();
         assert_eq!(parsed, value);
     }
 
     #[test]
-    fn content_wrapper_explicit_mime() {
-        let png_header = vec![0x89, 0x50, 0x4E, 0x47];
-        let events = Content("image/png", png_header.clone()).into_tool_events("en");
-        let (data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some("image/png"));
-        assert_eq!(data, png_header);
-    }
-
-    #[test]
-    fn cbor_encode_produces_cbor_mime() {
-        let input = vec![1u32, 2, 3];
-        let events = cbor_encode_response(&input, "en");
-        let (data, mime) = extract_content(events);
+    fn serialize_struct_falls_back_to_cbor() {
+        #[derive(serde::Serialize)]
+        struct S {
+            n: u32,
+        }
+        let (data, mime) = extract(S { n: 7 }.into_tool_response("en"));
         assert_eq!(mime.as_deref(), Some(crate::constants::MIME_CBOR));
-        let decoded: Vec<u32> = ciborium::from_reader(&data[..]).unwrap();
-        assert_eq!(decoded, input);
+        let v: ciborium::value::Value = ciborium::from_reader(&data[..]).unwrap();
+        assert_eq!(
+            v,
+            ciborium::value::Value::Map(vec![(
+                ciborium::value::Value::Text("n".into()),
+                ciborium::value::Value::Integer(7.into())
+            )])
+        );
     }
 
     #[test]
-    fn vec_u8_produces_octet_stream() {
-        let events = vec![1u8, 2, 3].into_tool_events("en");
-        let (_data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_OCTET_STREAM));
-    }
-
-    #[test]
-    fn string_still_produces_text_plain() {
-        let events = "hello".to_string().into_tool_events("en");
-        let (data, mime) = extract_content(events);
-        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_TEXT));
-        assert_eq!(data, b"hello");
+    fn bytes_falls_back_to_cbor_byte_string() {
+        let (data, mime) = extract(crate::bytes::Bytes(b"hi".to_vec()).into_tool_response("en"));
+        assert_eq!(mime.as_deref(), Some(crate::constants::MIME_CBOR));
+        let v: ciborium::value::Value = ciborium::from_reader(&data[..]).unwrap();
+        assert_eq!(v, ciborium::value::Value::Bytes(b"hi".to_vec()));
     }
 }

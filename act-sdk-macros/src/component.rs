@@ -337,24 +337,6 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     }
 }
 
-/// Check if a return type has a direct `IntoResponse` impl (no auto-CBOR needed).
-///
-/// Known types: `()`, `String`, `&str`, `Vec<u8>`, `Json<_>`, `Content`,
-/// `serde_json::Value`, `Value`.
-///
-/// `Bytes` is intentionally NOT here: returning `Bytes` auto-CBOR-encodes to a
-/// byte string, which projects to the `{"$bytes":…}` envelope on JSON (raw
-/// mime-typed blobs use `Content("image/png", …)` instead).
-fn has_direct_into_response(ty: &syn::Type) -> bool {
-    let s = quote!(#ty).to_string().replace(' ', "");
-    s == "()"
-        || s == "String"
-        || s == "&str"
-        || s == "Vec<u8>"
-        || s.starts_with("Json<")
-        || s.starts_with("Content")
-}
-
 /// Generate the match arm for call_tool dispatch.
 ///
 /// Non-streaming tools (no `ActContext` parameter) return `ToolResult::Immediate`
@@ -471,22 +453,9 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         }
     };
 
-    // Decide whether to use IntoResponse trait or auto-CBOR encoding.
-    // Known IntoResponse types use the trait directly; everything else gets CBOR.
-    let use_into_response = tool
-        .inner_return_type
-        .as_ref()
-        .is_none_or(has_direct_into_response);
-
-    let ok_response = if use_into_response {
-        quote! {
-            use ::act_sdk::IntoResponse;
-            let __response_events = __val.into_tool_events(__default_lang);
-        }
-    } else {
-        quote! {
-            let __response_events = ::act_sdk::response::cbor_encode_response(&__val, __default_lang);
-        }
+    let ok_response = quote! {
+        use ::act_sdk::response::{IntoToolResponse as _, IntoToolResponseViaSerialize as _};
+        let __response_events = __val.into_tool_response(__default_lang);
     };
 
     if tool.has_context {

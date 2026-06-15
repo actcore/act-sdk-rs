@@ -3,9 +3,8 @@
 //!
 //! [`SessionRegistry`] is the runtime state container — a map from
 //! component-allocated session-ids to user-defined per-session state
-//! `T`. It is intentionally small; the macro layer
-//! (`#[act_session_provider]`, planned) generates the WIT exports on
-//! top of it.
+//! `T`. It is intentionally small; the `#[session_open]` / `#[session_close]`
+//! macros and the macro-generated session-provider exports build on top of it.
 //!
 //! Components are single-threaded under wasm32-wasip2, so this module
 //! uses interior mutability (`RefCell`) without any locking. The
@@ -101,12 +100,6 @@ impl<T> SessionRegistry<T> {
     /// Whether the registry has no open sessions.
     pub fn is_empty(&self) -> bool {
         self.inner.borrow().is_empty()
-    }
-}
-
-impl<T> Default for SessionRegistry<T> {
-    fn default() -> Self {
-        Self::new("sid")
     }
 }
 
