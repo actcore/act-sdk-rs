@@ -18,8 +18,3 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
 darling = "0.23"
-act-types.workspace = true
-ciborium = "0.2"
-serde = { version = "1", features = ["derive"] }
-tar = "0.4"
-toml = "1"

@@ -6,11 +6,7 @@
 
 use act_sdk::prelude::*;
 
-#[act_component(
-    name = "sessions-counter",
-    version = "0.1.0",
-    description = "Per-session counter — exercise act:sessions/session-provider"
-)]
+#[act_component]
 mod component {
     use super::*;
 

@@ -1,5 +1,5 @@
 use darling::FromMeta;
-use proc_macro2::{Literal, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Item, ItemMod};
 
@@ -43,26 +43,8 @@ fn expand_include_item(mac_item: &syn::ItemMacro) -> Option<Vec<Item>> {
     Some(file.items)
 }
 
-/// Attributes parsed from #[act_component(...)].
-/// All fields are optional — defaults are taken from Cargo.toml via env!().
-#[derive(Debug, FromMeta)]
-pub struct ComponentAttrs {
-    /// Path to manifest file relative to crate root (default: `"act.toml"`).
-    #[darling(default)]
-    pub manifest: Option<String>,
-    // Override fields (take precedence over act.toml and Cargo.toml)
-    #[darling(default)]
-    pub name: Option<String>,
-    #[darling(default)]
-    pub version: Option<String>,
-    #[darling(default)]
-    pub description: Option<String>,
-    #[darling(default)]
-    pub default_language: Option<String>,
-}
-
 /// Main code generation for #[act_component].
-pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStream> {
+pub fn generate(module: &ItemMod) -> syn::Result<TokenStream> {
     // Extract tool functions from the module
     let tools = extract_tools(module)?;
 
@@ -72,37 +54,9 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
     // Collect user items from the module (excluding #[act_tool] attrs but keeping fn bodies)
     let user_items = collect_user_items(module);
 
-    // Read act.toml manifest (if present) and merge with attribute overrides + Cargo.toml.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-    let manifest_file = attrs.manifest.as_deref().unwrap_or("act.toml");
-    let manifest_path = std::path::Path::new(&manifest_dir).join(manifest_file);
-
-    let manifest = crate::manifest::read_manifest(&manifest_path).unwrap_or_else(|e| panic!("{e}"));
-
-    let overrides = crate::manifest::Overrides {
-        name: attrs.name,
-        version: attrs.version,
-        description: attrs.description,
-        default_language: attrs.default_language,
-    };
-
-    let info = crate::manifest::build_component_info(manifest, overrides);
-    let default_lang = info.std.default_language.as_deref().unwrap_or("en");
-    let comp_version = info.std.version.clone();
-    let comp_description = info.std.description.clone();
-
-    // Generate CBOR-encoded `act:component` custom section at compile time.
-    let mut cbor_buf = Vec::new();
-    ciborium::into_writer(&info, &mut cbor_buf).expect("CBOR encoding failed");
-    let act_component_cbor = cbor_buf;
-    let cbor_len = act_component_cbor.len();
-    let cbor_literal = Literal::byte_string(&act_component_cbor);
-
-    // Standard WASM metadata sections (plain UTF-8 strings).
-    let version_len = comp_version.len();
-    let version_literal = Literal::byte_string(comp_version.as_bytes());
-    let description_len = comp_description.len();
-    let description_literal = Literal::byte_string(comp_description.as_bytes());
+    // Runtime response-encoding language. Component metadata (incl. the real
+    // default-language) is embedded by `act-build pack`, not the macro.
+    let default_lang = "en";
 
     // Generate tool definition entries for list_tools
     let tool_defs = tools.iter().map(|t| gen_tool_definition(t, default_lang));
@@ -122,16 +76,6 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
         None => quote! {},
     };
 
-    // Track act.toml so cargo rebuilds when it changes.
-    let manifest_tracking = if manifest_path.exists() {
-        let path_str = manifest_path.to_string_lossy().to_string();
-        quote! {
-            const _: &[u8] = include_bytes!(#path_str);
-        }
-    } else {
-        quote! {}
-    };
-
     // Generate the complete output
     let output = quote! {
         // Make serde/schemars visible for trait bounds in generated code,
@@ -145,26 +89,6 @@ pub fn generate(attrs: ComponentAttrs, module: &ItemMod) -> syn::Result<TokenStr
             world: "component-world",
             generate_all,
         });
-
-        // Track act.toml for cargo rebuild.
-        #manifest_tracking
-
-        // Standard WASM metadata custom sections (OCI annotations).
-        // Compatible with wasm-tools, wkg, wa.dev, and the WASM component ecosystem.
-        // SAFETY: link_section places data in named WASM custom sections; no executable code.
-        #[unsafe(link_section = "version")]
-        #[used]
-        static __ACT_VERSION_SECTION: [u8; #version_len] = *#version_literal;
-
-        #[unsafe(link_section = "description")]
-        #[used]
-        static __ACT_DESCRIPTION_SECTION: [u8; #description_len] = *#description_literal;
-
-        // `act:component` custom section — CBOR-encoded ACT-specific metadata.
-        // Contains fields not covered by standard WASM metadata (e.g. std:default-language).
-        #[unsafe(link_section = "act:component")]
-        #[used]
-        static __ACT_COMPONENT_SECTION: [u8; #cbor_len] = *#cbor_literal;
 
         // User-defined items from the module body
         #(#user_items)*

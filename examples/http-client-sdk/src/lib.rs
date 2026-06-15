@@ -21,11 +21,7 @@ fn default_method() -> String {
     "GET".to_string()
 }
 
-#[act_component(
-    name = "http-client",
-    version = "0.1.0",
-    description = "HTTP client ACT component"
-)]
+#[act_component]
 mod component {
     use super::*;
 

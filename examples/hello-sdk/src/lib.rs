@@ -1,10 +1,6 @@
 use act_sdk::prelude::*;
 
-#[act_component(
-    name = "hello-sdk",
-    version = "0.1.0",
-    description = "Hello world using act-sdk"
-)]
+#[act_component]
 mod component {
     use super::*;
 

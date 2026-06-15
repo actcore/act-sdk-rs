@@ -5,7 +5,7 @@ pub mod response;
 pub mod sessions;
 pub mod types;
 
-pub use act_sdk_macros::{act_component, act_tool, embed_skill, session_close, session_open};
+pub use act_sdk_macros::{act_component, act_tool, session_close, session_open};
 pub use bytes::Bytes;
 pub use context::ActContext;
 pub use response::{Content, IntoResponse, Json};

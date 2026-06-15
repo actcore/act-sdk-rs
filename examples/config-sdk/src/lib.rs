@@ -13,11 +13,7 @@ fn default_prefix() -> String {
     "Hello".to_string()
 }
 
-#[act_component(
-    name = "config-example",
-    version = "0.1.0",
-    description = "Example component with config"
-)]
+#[act_component]
 mod component {
     use super::*;
 
