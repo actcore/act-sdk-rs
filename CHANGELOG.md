@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-06-15
+
+### Changed
+
+- **`Bytes` is now envelope-only.** It serializes and deserializes strictly as a
+  CBOR byte string — the `{"$bytes":"<base64>"}` envelope on JSON transports —
+  and no longer accepts a bare base64 string (a string is text, not bytes). Its
+  JSON Schema is now the `$bytes` object, and returning `Bytes` from a tool
+  yields the envelope (use `Content("image/png", …)` for raw mime-typed blobs).
+  One consistent rule now holds across all binary types: a bare string is always
+  text; bytes always travel as an envelope.
+
 ## [0.8.1] - 2026-06-15
 
 ### Added
