@@ -415,15 +415,18 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
 
 /// Check if a return type has a direct `IntoResponse` impl (no auto-CBOR needed).
 ///
-/// Known types: `()`, `String`, `&str`, `Vec<u8>`, `Bytes`, `Json<_>`, `Content`,
+/// Known types: `()`, `String`, `&str`, `Vec<u8>`, `Json<_>`, `Content`,
 /// `serde_json::Value`, `Value`.
+///
+/// `Bytes` is intentionally NOT here: returning `Bytes` auto-CBOR-encodes to a
+/// byte string, which projects to the `{"$bytes":…}` envelope on JSON (raw
+/// mime-typed blobs use `Content("image/png", …)` instead).
 fn has_direct_into_response(ty: &syn::Type) -> bool {
     let s = quote!(#ty).to_string().replace(' ', "");
     s == "()"
         || s == "String"
         || s == "&str"
         || s == "Vec<u8>"
-        || s == "Bytes"
         || s.starts_with("Json<")
         || s.starts_with("Content")
 }

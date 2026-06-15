@@ -8,7 +8,6 @@ version = "0.8.1"
 dependencies = [
  "act-sdk-macros",
  "act-types",
- "base64",
  "ciborium",
  "schemars 1.2.1",
  "serde",
