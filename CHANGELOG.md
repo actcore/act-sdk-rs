@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-06-15
+
+### Added
+
+- **`Bytes` type for binary tool fields** — serializes to a CBOR byte string
+  (major type 2), deserializes from either a byte string or a base64 string, and
+  advertises `contentEncoding: base64` in its JSON Schema. Returning `Bytes`
+  produces `application/octet-stream`. Exported from the prelude.
+- **Lossless binary round-trip across JSON transports** — CBOR byte strings now
+  project to and from the canonical `{"$bytes":"<base64>"}` JSON wrapper (with
+  `$`-prefixed key escaping), so binary data survives HTTP+JSON and MCP without
+  base64-into-text corruption.
+
 ## [0.8.0] - 2026-06-13
 
 ### Changed
