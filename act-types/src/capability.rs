@@ -133,4 +133,26 @@ mod tests {
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v, serde_json::json!({ "description": "hello" }));
     }
+
+    #[test]
+    fn capabilities_cbor_is_map_keyed_by_id() {
+        use crate::cbor;
+        let mut caps = Capabilities::default();
+        caps.0.insert(
+            "wasi:filesystem".into(),
+            CapabilityRequest {
+                constraints: vec![serde_json::json!({ "path": "/data/**", "mode": "rw" })],
+                ..Default::default()
+            },
+        );
+
+        let bytes = cbor::to_cbor(&caps);
+        let back: Capabilities = cbor::from_cbor(&bytes).unwrap();
+
+        assert!(back.has("wasi:filesystem"));
+        assert_eq!(
+            back.get("wasi:filesystem").unwrap().constraints,
+            vec![serde_json::json!({ "path": "/data/**", "mode": "rw" })]
+        );
+    }
 }
