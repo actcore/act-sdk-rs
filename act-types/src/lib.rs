@@ -6,9 +6,8 @@ pub mod jsonrpc;
 pub mod mcp;
 pub mod types;
 
-pub use capability::{CapabilityRequest, Constraint};
+pub use capability::{Capabilities, CapabilityRequest, Constraint};
 pub use types::{
-    ActError, ActResult, Capabilities, ComponentInfo, FilesystemAllow, FilesystemCap, FsMode,
-    HttpAllow, HttpCap, LocalizedString, Metadata, SocketProtocol, SocketsAllow, SocketsCap,
-    StdComponentInfo,
+    ActError, ActResult, ComponentInfo, FilesystemAllow, FsMode, HttpAllow, LocalizedString,
+    Metadata, SocketProtocol, SocketsAllow, StdComponentInfo,
 };

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::LocalizedString;
+use crate::{LocalizedString, constants::CAP_FILESYSTEM};
 
 /// A provider-defined constraint predicate, opaque at the `act:core` layer.
 /// Each capability provider supplies the JSON Schema that validates it.
@@ -50,6 +50,43 @@ impl CapabilityRequest {
             .iter()
             .map(|c| serde_json::from_value::<T>(c.clone()))
             .collect()
+    }
+}
+
+/// Capability declarations from the `std.capabilities` map in `act:component`.
+/// Serializes transparently as a CBOR/JSON map keyed by capability id.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Capabilities(pub BTreeMap<String, CapabilityRequest>);
+
+impl Capabilities {
+    /// True if no capabilities are declared.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether a capability id is declared.
+    pub fn has(&self, id: &str) -> bool {
+        self.0.contains_key(id)
+    }
+
+    /// The request for a capability id, if declared.
+    pub fn get(&self, id: &str) -> Option<&CapabilityRequest> {
+        self.0.get(id)
+    }
+
+    /// The `mount-root` param of `wasi:filesystem`, if present.
+    pub fn fs_mount_root(&self) -> Option<&str> {
+        self.0
+            .get(CAP_FILESYSTEM)?
+            .params
+            .get("mount-root")?
+            .as_str()
+    }
+
+    /// Iterate over (id, request) pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &CapabilityRequest)> {
+        self.0.iter()
     }
 }
 

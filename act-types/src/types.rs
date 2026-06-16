@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::cbor;
 
@@ -203,27 +203,10 @@ impl From<Metadata> for Vec<(String, Vec<u8>)> {
     }
 }
 
+use crate::capability::Capabilities;
 use crate::constants::*;
 
 // ── Component info (act:component custom section) ──
-
-/// Parameters for the `wasi:filesystem` capability.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct FilesystemCap {
-    /// Internal WASM root path for all host mounts (default: `/`).
-    #[serde(
-        rename = "mount-root",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub mount_root: Option<String>,
-
-    /// Paths the component needs access to, each with a required mode.
-    /// Empty = zero filesystem access. To declare broad access, use
-    /// `allow = [{ path = "**", mode = "rw" }]`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allow: Vec<FilesystemAllow>,
-}
 
 /// One path × mode entry in a `[std.capabilities."wasi:filesystem"].allow` array.
 /// Both fields are required.
@@ -245,16 +228,6 @@ pub enum FsMode {
     Rw,
 }
 
-/// Parameters for the `wasi:http` capability.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct HttpCap {
-    /// Hosts / schemes / methods / ports the component needs to reach.
-    /// Empty = zero HTTP access. To declare broad access, use
-    /// `allow = [{ host = "*" }]`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allow: Vec<HttpAllow>,
-}
-
 /// One entry in a `[std.capabilities."wasi:http"].allow` array.
 ///
 /// `host` is required (exact match, `*.suffix` wildcard, or `*` for any).
@@ -269,15 +242,6 @@ pub struct HttpAllow {
     pub methods: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ports: Option<Vec<u16>>,
-}
-
-/// Parameters for the `wasi:sockets` capability — raw TCP / UDP I/O.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct SocketsCap {
-    /// Endpoints the component needs to reach. Empty = no socket access
-    /// (use `allow = [{ host = "*", ports = [...] }]` for broad access).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allow: Vec<SocketsAllow>,
 }
 
 /// One entry in a `[std.capabilities."wasi:sockets"].allow` array.
@@ -318,53 +282,6 @@ fn is_default_protocols(v: &[SocketProtocol]) -> bool {
 pub enum SocketProtocol {
     Tcp,
     Udp,
-}
-
-/// Capability declarations from the `std:capabilities` map in `act:component`.
-///
-/// Well-known capabilities have typed fields. Unknown third-party capabilities
-/// are collected in `other`. Serializes as a CBOR/JSON map keyed by capability ID.
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct Capabilities {
-    /// `wasi:filesystem` — filesystem access.
-    #[serde(rename = "wasi:filesystem")]
-    pub filesystem: Option<FilesystemCap>,
-    /// `wasi:http` — outbound HTTP requests.
-    #[serde(rename = "wasi:http")]
-    pub http: Option<HttpCap>,
-    /// `wasi:sockets` — outbound TCP/UDP connections.
-    #[serde(rename = "wasi:sockets")]
-    pub sockets: Option<SocketsCap>,
-    /// Third-party capabilities keyed by identifier.
-    #[serde(flatten)]
-    pub other: BTreeMap<String, serde_json::Value>,
-}
-
-impl Capabilities {
-    /// True if no capabilities are declared.
-    pub fn is_empty(&self) -> bool {
-        self.http.is_none()
-            && self.filesystem.is_none()
-            && self.sockets.is_none()
-            && self.other.is_empty()
-    }
-
-    /// Check if a capability is declared by its string identifier.
-    pub fn has(&self, id: &str) -> bool {
-        match id {
-            CAP_HTTP => self.http.is_some(),
-            CAP_FILESYSTEM => self.filesystem.is_some(),
-            CAP_SOCKETS => self.sockets.is_some(),
-            other => self.other.contains_key(other),
-        }
-    }
-
-    /// Get the `mount-root` parameter from the `wasi:filesystem` capability.
-    pub fn fs_mount_root(&self) -> Option<&str> {
-        self.filesystem.as_ref()?.mount_root.as_deref()
-    }
 }
 
 /// Component metadata stored in the `act:component` WASM custom section (CBOR-encoded).
@@ -490,6 +407,7 @@ pub type ActResult<T> = Result<T, ActError>;
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::BTreeMap;
 
     #[test]
     fn localized_string_plain() {
@@ -577,61 +495,78 @@ mod tests {
 
     #[test]
     fn capabilities_cbor_roundtrip() {
+        use crate::CapabilityRequest;
         let mut info = ComponentInfo::new("test", "0.1.0", "test component");
-        info.std.capabilities.http = Some(HttpCap::default());
-        info.std.capabilities.filesystem = Some(FilesystemCap {
-            mount_root: Some("/data".to_string()),
-            ..Default::default()
-        });
+        info.std
+            .capabilities
+            .0
+            .insert("wasi:http".into(), CapabilityRequest::default());
+        info.std.capabilities.0.insert(
+            "wasi:filesystem".into(),
+            CapabilityRequest {
+                params: BTreeMap::from([("mount-root".into(), json!("/data"))]),
+                ..Default::default()
+            },
+        );
 
         let mut buf = Vec::new();
         ciborium::into_writer(&info, &mut buf).unwrap();
-
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.std.capabilities.http.is_some());
-        assert!(decoded.std.capabilities.filesystem.is_some());
-        assert!(decoded.std.capabilities.sockets.is_none());
+
+        assert!(decoded.std.capabilities.has("wasi:http"));
+        assert!(decoded.std.capabilities.has("wasi:filesystem"));
+        assert!(!decoded.std.capabilities.has("wasi:sockets"));
         assert_eq!(decoded.std.capabilities.fs_mount_root(), Some("/data"));
     }
 
     #[test]
     fn capabilities_empty_roundtrip() {
         let info = ComponentInfo::new("test", "0.1.0", "test");
-
         let mut buf = Vec::new();
         ciborium::into_writer(&info, &mut buf).unwrap();
-
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
         assert!(decoded.std.capabilities.is_empty());
     }
 
     #[test]
     fn capabilities_fs_no_params_roundtrip() {
+        use crate::CapabilityRequest;
         let mut info = ComponentInfo::new("test", "0.1.0", "test");
-        info.std.capabilities.filesystem = Some(FilesystemCap::default());
-
+        info.std
+            .capabilities
+            .0
+            .insert("wasi:filesystem".into(), CapabilityRequest::default());
         let mut buf = Vec::new();
         ciborium::into_writer(&info, &mut buf).unwrap();
-
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
-        assert!(decoded.std.capabilities.filesystem.is_some());
+        assert!(decoded.std.capabilities.has("wasi:filesystem"));
         assert_eq!(decoded.std.capabilities.fs_mount_root(), None);
     }
 
     #[test]
     fn capabilities_unknown_preserved() {
+        use crate::CapabilityRequest;
         let mut info = ComponentInfo::new("test", "0.1.0", "test");
-        info.std
-            .capabilities
-            .other
-            .insert("acme:gpu".to_string(), json!({"cores": 8}));
-
+        info.std.capabilities.0.insert(
+            "acme:gpu".into(),
+            CapabilityRequest {
+                constraints: vec![json!({ "cores": 8 })],
+                ..Default::default()
+            },
+        );
         let mut buf = Vec::new();
         ciborium::into_writer(&info, &mut buf).unwrap();
-
         let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
         assert!(decoded.std.capabilities.has("acme:gpu"));
-        assert_eq!(decoded.std.capabilities.other["acme:gpu"]["cores"], 8);
+        assert_eq!(
+            decoded
+                .std
+                .capabilities
+                .get("acme:gpu")
+                .unwrap()
+                .constraints[0]["cores"],
+            8
+        );
     }
 
     #[test]
@@ -657,18 +592,25 @@ mode = "rw"
             capabilities: Capabilities,
         }
         let w: Wrap = toml::from_str(toml_input).expect("parses");
-        let fs = w.std.capabilities.filesystem.expect("fs declared");
-        assert_eq!(fs.allow.len(), 2);
-        assert_eq!(fs.allow[0].path, "/etc/**");
-        assert!(matches!(fs.allow[0].mode, FsMode::Ro));
-        assert_eq!(fs.allow[1].path, "/tmp/**");
-        assert!(matches!(fs.allow[1].mode, FsMode::Rw));
+        let fs = w
+            .std
+            .capabilities
+            .get("wasi:filesystem")
+            .expect("fs declared");
+        let allow = fs
+            .constraints_as::<crate::FilesystemAllow>()
+            .expect("parse");
+        assert_eq!(allow.len(), 2);
+        assert_eq!(allow[0].path, "/etc/**");
+        assert_eq!(allow[1].path, "/tmp/**");
     }
 
     #[test]
     fn filesystem_cap_requires_path_and_mode_on_each_entry() {
-        // Missing `mode` → parse error.
-        let bad = r#"
+        // Missing `mode` → parse error at constraints_as time (FilesystemAllow requires mode).
+        let toml_input = r#"
+[std.capabilities."wasi:filesystem"]
+
 [[std.capabilities."wasi:filesystem".allow]]
 path = "/tmp/**"
 "#;
@@ -680,8 +622,14 @@ path = "/tmp/**"
         struct Std {
             capabilities: Capabilities,
         }
+        let w: Wrap = toml::from_str(toml_input).expect("toml parses");
+        let fs = w
+            .std
+            .capabilities
+            .get("wasi:filesystem")
+            .expect("fs declared");
         assert!(
-            toml::from_str::<Wrap>(bad).is_err(),
+            fs.constraints_as::<FilesystemAllow>().is_err(),
             "missing mode must fail"
         );
     }
@@ -710,21 +658,24 @@ scheme = "https"
             capabilities: Capabilities,
         }
         let w: Wrap = toml::from_str(toml_input).expect("parses");
-        let http = w.std.capabilities.http.expect("http declared");
-        assert_eq!(http.allow.len(), 2);
-        assert_eq!(http.allow[0].host, "api.openai.com");
-        assert_eq!(http.allow[0].scheme.as_deref(), Some("https"));
+        let http = w.std.capabilities.get("wasi:http").expect("http declared");
+        let allow = http.constraints_as::<HttpAllow>().expect("parse");
+        assert_eq!(allow.len(), 2);
+        assert_eq!(allow[0].host, "api.openai.com");
+        assert_eq!(allow[0].scheme.as_deref(), Some("https"));
         assert_eq!(
-            http.allow[0].methods.as_deref(),
+            allow[0].methods.as_deref(),
             Some(&["GET".to_string(), "POST".to_string()][..])
         );
-        assert_eq!(http.allow[1].host, "*.github.com");
+        assert_eq!(allow[1].host, "*.github.com");
     }
 
     #[test]
     fn http_cap_requires_host_on_each_entry() {
-        // Missing `host` → parse error.
-        let bad = r#"
+        // Missing `host` → constraints_as::<HttpAllow> fails.
+        let toml_input = r#"
+[std.capabilities."wasi:http"]
+
 [[std.capabilities."wasi:http".allow]]
 scheme = "https"
 "#;
@@ -736,15 +687,16 @@ scheme = "https"
         struct Std {
             capabilities: Capabilities,
         }
+        let w: Wrap = toml::from_str(toml_input).expect("toml parses");
+        let http = w.std.capabilities.get("wasi:http").expect("http declared");
         assert!(
-            toml::from_str::<Wrap>(bad).is_err(),
+            http.constraints_as::<HttpAllow>().is_err(),
             "missing host must fail"
         );
     }
 
     #[test]
     fn http_cap_wildcard_host() {
-        // "*" is the explicit any-host wildcard.
         let toml_input = r#"
 [[std.capabilities."wasi:http".allow]]
 host = "*"
@@ -758,48 +710,59 @@ host = "*"
             capabilities: Capabilities,
         }
         let w: Wrap = toml::from_str(toml_input).expect("parses");
-        assert_eq!(w.std.capabilities.http.unwrap().allow[0].host, "*");
+        let http = w.std.capabilities.get("wasi:http").expect("http declared");
+        let allow = http.constraints_as::<HttpAllow>().expect("parse");
+        assert_eq!(allow[0].host, "*");
     }
 
     #[test]
-    fn sockets_allow_round_trip() {
+    fn sockets_cap_with_allow_roundtrips() {
         let toml_input = r#"
 [std.capabilities."wasi:sockets"]
-allow = [
-    { host = "vnc.example.com", ports = [5900], protocols = ["tcp"] },
-    { cidr = "10.0.0.0/8", ports = [80, 443] },
-]
+
+[[std.capabilities."wasi:sockets".allow]]
+host = "vnc.example.com"
+ports = [5900]
+protocols = ["tcp"]
+
+[[std.capabilities."wasi:sockets".allow]]
+cidr = "10.0.0.0/8"
+ports = [80, 443]
 "#;
         #[derive(serde::Deserialize)]
-        struct W {
-            std: Wrap,
+        struct Wrap {
+            std: Std,
         }
         #[derive(serde::Deserialize)]
-        struct Wrap {
+        struct Std {
             capabilities: Capabilities,
         }
-        let w: W = toml::from_str(toml_input).unwrap();
-        let sockets = w.std.capabilities.sockets.expect("sockets declared");
-        assert_eq!(sockets.allow.len(), 2);
-
-        let a = &sockets.allow[0];
-        assert_eq!(a.host.as_deref(), Some("vnc.example.com"));
-        assert_eq!(a.cidr, None);
-        assert_eq!(a.ports, vec![5900]);
-        assert_eq!(a.protocols, vec![SocketProtocol::Tcp]);
-
-        let b = &sockets.allow[1];
+        let w: Wrap = toml::from_str(toml_input).expect("parses");
+        let allow = w
+            .std
+            .capabilities
+            .get("wasi:sockets")
+            .expect("sockets declared")
+            .constraints_as::<crate::SocketsAllow>()
+            .expect("parse");
+        assert_eq!(allow.len(), 2);
+        let b = &allow[1];
         assert_eq!(b.host, None);
         assert_eq!(b.cidr.as_deref(), Some("10.0.0.0/8"));
         assert_eq!(b.ports, vec![80, 443]);
+        // `protocols` omitted on the cidr entry → default tcp+udp applies on parse.
         assert_eq!(b.protocols, vec![SocketProtocol::Tcp, SocketProtocol::Udp]);
     }
 
     #[test]
     fn sockets_cap_has_string() {
+        use crate::CapabilityRequest;
         let mut c = Capabilities::default();
         assert!(!c.has(crate::constants::CAP_SOCKETS));
-        c.sockets = Some(SocketsCap::default());
+        c.0.insert(
+            crate::constants::CAP_SOCKETS.into(),
+            CapabilityRequest::default(),
+        );
         assert!(c.has(crate::constants::CAP_SOCKETS));
     }
 
