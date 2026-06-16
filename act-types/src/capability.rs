@@ -86,4 +86,14 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].path, "/x/**");
     }
+
+    #[test]
+    fn description_round_trips_as_bare_string() {
+        // act.toml writes `description = "..."` — a bare string must parse into Plain
+        // and serialize back to a bare string (not {"Plain": "..."}).
+        let req: CapabilityRequest =
+            serde_json::from_value(serde_json::json!({ "description": "hello" })).unwrap();
+        let v = serde_json::to_value(&req).unwrap();
+        assert_eq!(v, serde_json::json!({ "description": "hello" }));
+    }
 }
