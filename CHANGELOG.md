@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-16
+
+This release moves component metadata out of the SDK macros into `act-build pack`.
+Components run `act-build pack` after `cargo build` (the canonical flow) — a bare
+`cargo build` no longer embeds `act:component`. `pack` resolves metadata from the
+**language project declaration** (`Cargo.toml` `[package]`, `pyproject.toml`,
+`package.json`) merged with `act.toml`.
+
+### Changed
+
+- **`#[act_component]` is lean and takes no arguments.** It compiles only
+  component logic (WIT world, `list_tools`/`call_tool` dispatch, session-provider).
+  It no longer reads the project manifest or embeds the `act:component` /
+  `version` / `description` sections — `act-build pack` is now the sole metadata
+  embedder, resolving name/version/description from the language project
+  declaration (`Cargo.toml` `[package]`, preferred), merged with `act.toml`, with
+  `act-build pack --set std.name=…` for feature-conditional overrides.
+- **Tool return encoding unified behind `IntoToolResponse`** (renamed from
+  `IntoResponse`), resolved by autoref specialization: `String`/`&str`→`text/plain`,
+  `Vec<u8>`→`application/octet-stream`, `Content`→its MIME, `Json<T>`→
+  `application/json`, any other `Serialize` value (incl. `Bytes`)→`application/cbor`.
+  No behavior change for components.
+
+### Removed
+
+- **`embed_skill!`** — `act-build pack` embeds the `skill/` directory into `act:skill`.
+- `#[act_component]`'s `name` / `version` / `description` / `manifest` arguments —
+  metadata comes from the language project declaration (`Cargo.toml` `[package]`,
+  preferred), `act.toml`, or `act-build pack --set`.
+- `SessionRegistry`'s `Default` impl — construct with `SessionRegistry::new("<prefix>")`.
+
 ## [0.8.2] - 2026-06-15
 
 ### Changed
