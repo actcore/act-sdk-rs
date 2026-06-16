@@ -8,7 +8,7 @@ use crate::cbor;
 ///
 /// - `Plain` — a single string in the component's `default-language`.
 /// - `Localized` — a map of BCP 47 language tags to text.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum LocalizedString {
     /// A single string assumed to be in the component's `default-language`.
     Plain(String),
