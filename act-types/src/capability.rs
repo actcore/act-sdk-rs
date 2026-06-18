@@ -31,13 +31,6 @@ pub struct CapabilityRequest {
     /// `allow` is accepted as an alias so existing `act.toml` parses.
     #[serde(default, alias = "allow", skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<Constraint>,
-    /// When true, absence of a grant degrades the component rather than fails it.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub optional: bool,
-}
-
-fn is_false(b: &bool) -> bool {
-    !*b
 }
 
 impl CapabilityRequest {
