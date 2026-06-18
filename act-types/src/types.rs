@@ -350,6 +350,65 @@ impl ComponentInfo {
     }
 }
 
+/// Mount kind for a `wasi:filesystem` `params.mounts` entry (topology only).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MountType {
+    /// Bind one host directory to a guest path. Requires `host`.
+    #[default]
+    Bind,
+    /// Expose the platform root(s) at a guest path. `host` is forbidden.
+    Root,
+}
+
+/// One entry in `params.mounts` of the `wasi:filesystem` capability.
+///
+/// Pure topology: it makes a host directory *nameable* at a guest path.
+/// Authorization (which host paths, at which mode) stays in `constraints`
+/// (`FilesystemAllow`); a mount carries no access mode.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FilesystemMount {
+    /// Mount kind. Defaults to `bind`.
+    #[serde(rename = "type", default)]
+    pub kind: MountType,
+    /// Guest mount point (POSIX-absolute). Required for `bind`; `root`
+    /// defaults to "/" when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guest: Option<String>,
+    /// Host directory (bind only; `~`-expanded by the host). Required iff
+    /// `bind`, forbidden iff `root`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+#[cfg(test)]
+mod mount_tests {
+    use super::{FilesystemMount, MountType};
+
+    #[test]
+    fn bind_is_the_default_type_and_round_trips() {
+        let m: FilesystemMount =
+            serde_json::from_value(serde_json::json!({ "guest": "/ows", "host": "~/.ows" }))
+                .unwrap();
+        assert_eq!(m.kind, MountType::Bind);
+        assert_eq!(m.guest.as_deref(), Some("/ows"));
+        assert_eq!(m.host.as_deref(), Some("~/.ows"));
+
+        let v = serde_json::to_value(&m).unwrap();
+        // `type` defaults to bind and is omitted only if we don't skip; we DO serialize it.
+        assert_eq!(v["guest"], "/ows");
+        assert_eq!(v["host"], "~/.ows");
+    }
+
+    #[test]
+    fn root_parses_with_type_field_and_no_host() {
+        let m: FilesystemMount =
+            serde_json::from_value(serde_json::json!({ "type": "root", "guest": "/" })).unwrap();
+        assert_eq!(m.kind, MountType::Root);
+        assert_eq!(m.host, None);
+    }
+}
+
 // ── Error type ──
 
 /// Error type mapping to ACT `tool-error`.

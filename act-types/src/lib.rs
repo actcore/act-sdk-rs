@@ -8,6 +8,6 @@ pub mod types;
 
 pub use capability::{Capabilities, CapabilityRequest, Constraint};
 pub use types::{
-    ActError, ActResult, ComponentInfo, FilesystemAllow, FsMode, HttpAllow, LocalizedString,
-    Metadata, SocketProtocol, SocketsAllow, StdComponentInfo,
+    ActError, ActResult, ComponentInfo, FilesystemAllow, FilesystemMount, FsMode, HttpAllow,
+    LocalizedString, Metadata, MountType, SocketProtocol, SocketsAllow, StdComponentInfo,
 };

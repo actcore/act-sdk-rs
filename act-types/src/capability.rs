@@ -77,6 +77,19 @@ impl Capabilities {
             .as_str()
     }
 
+    /// Parse `wasi:filesystem` `params.mounts` into typed entries.
+    /// Returns an empty vec when the cap or the `mounts` param is absent.
+    pub fn fs_mounts(&self) -> Result<Vec<crate::FilesystemMount>, serde_json::Error> {
+        match self
+            .0
+            .get(CAP_FILESYSTEM)
+            .and_then(|r| r.params.get("mounts"))
+        {
+            Some(v) => serde_json::from_value(v.clone()),
+            None => Ok(Vec::new()),
+        }
+    }
+
     /// Iterate over (id, request) pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &CapabilityRequest)> {
         self.0.iter()
@@ -125,6 +138,36 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "description": "hello" })).unwrap();
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v, serde_json::json!({ "description": "hello" }));
+    }
+
+    #[test]
+    fn fs_mounts_parses_params_mounts() {
+        use crate::MountType;
+        let mut caps = Capabilities::default();
+        caps.0.insert(
+            "wasi:filesystem".into(),
+            CapabilityRequest {
+                params: {
+                    let mut p = BTreeMap::new();
+                    p.insert(
+                        "mounts".to_string(),
+                        serde_json::json!([{ "guest": "/ows", "host": "~/.ows" }]),
+                    );
+                    p
+                },
+                ..Default::default()
+            },
+        );
+        let mounts = caps.fs_mounts().unwrap();
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].kind, MountType::Bind);
+        assert_eq!(mounts[0].guest.as_deref(), Some("/ows"));
+    }
+
+    #[test]
+    fn fs_mounts_absent_is_empty() {
+        let caps = Capabilities::default();
+        assert!(caps.fs_mounts().unwrap().is_empty());
     }
 
     #[test]
