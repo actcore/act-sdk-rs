@@ -381,9 +381,123 @@ pub struct FilesystemMount {
     pub host: Option<String>,
 }
 
+/// Validate a list of mounts. Rules are independent of the constraint set
+/// (cross-checks like the drift lint live in act-build). Returns the first
+/// violation as a human-readable string.
+pub fn validate_mounts(mounts: &[FilesystemMount]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, m) in mounts.iter().enumerate() {
+        let guest = match m.kind {
+            MountType::Bind => {
+                let g = m
+                    .guest
+                    .as_deref()
+                    .ok_or_else(|| format!("mounts[{i}]: bind mount requires `guest`"))?;
+                if m.host.as_deref().is_none_or(str::is_empty) {
+                    return Err(format!("mounts[{i}]: bind mount requires `host`"));
+                }
+                g
+            }
+            MountType::Root => {
+                if m.host.is_some() {
+                    return Err(format!("mounts[{i}]: root mount must not set `host`"));
+                }
+                m.guest.as_deref().unwrap_or("/")
+            }
+        };
+        validate_guest(i, guest)?;
+        if !seen.insert(guest.to_string()) {
+            return Err(format!("mounts[{i}]: duplicate guest path `{guest}`"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_guest(i: usize, guest: &str) -> Result<(), String> {
+    if !guest.starts_with('/') {
+        return Err(format!(
+            "mounts[{i}]: guest `{guest}` must be POSIX-absolute (start with '/')"
+        ));
+    }
+    if guest.contains('\\') || guest.contains(':') {
+        return Err(format!(
+            "mounts[{i}]: guest `{guest}` must not contain a drive letter or backslash"
+        ));
+    }
+    if guest.split('/').any(|c| c == "." || c == "..") {
+        return Err(format!(
+            "mounts[{i}]: guest `{guest}` must not contain '.' or '..' components"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod mount_tests {
+    use super::validate_mounts;
     use super::{FilesystemMount, MountType};
+
+    fn bind(guest: &str, host: &str) -> FilesystemMount {
+        FilesystemMount {
+            kind: MountType::Bind,
+            guest: Some(guest.into()),
+            host: Some(host.into()),
+        }
+    }
+
+    #[test]
+    fn valid_bind_passes() {
+        assert!(validate_mounts(&[bind("/ows", "~/.ows")]).is_ok());
+    }
+
+    #[test]
+    fn bind_without_host_fails() {
+        let m = FilesystemMount {
+            kind: MountType::Bind,
+            guest: Some("/ows".into()),
+            host: None,
+        };
+        assert!(validate_mounts(&[m]).unwrap_err().contains("host"));
+    }
+
+    #[test]
+    fn root_with_host_fails() {
+        let m = FilesystemMount {
+            kind: MountType::Root,
+            guest: Some("/".into()),
+            host: Some("/x".into()),
+        };
+        assert!(validate_mounts(&[m]).unwrap_err().contains("host"));
+    }
+
+    #[test]
+    fn relative_guest_fails() {
+        assert!(
+            validate_mounts(&[bind("ows", "~/.ows")])
+                .unwrap_err()
+                .contains("absolute")
+        );
+    }
+
+    #[test]
+    fn drive_letter_guest_fails() {
+        assert!(validate_mounts(&[bind("/c:/x", "~/.ows")]).is_err());
+    }
+
+    #[test]
+    fn dotdot_guest_fails() {
+        assert!(
+            validate_mounts(&[bind("/ows/../etc", "~/.ows")])
+                .unwrap_err()
+                .contains("..")
+        );
+    }
+
+    #[test]
+    fn duplicate_guest_fails() {
+        let e = validate_mounts(&[bind("/ows", "~/a"), bind("/ows", "~/b")]).unwrap_err();
+        assert!(e.contains("duplicate"));
+    }
 
     #[test]
     fn bind_is_the_default_type_and_round_trips() {
