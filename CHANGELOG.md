@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-22
+
+### Added
+
+- **Typed filesystem mounts.** Components can declare `bind`/`root` mounts under
+  `params.mounts`; `Capabilities::fs_mounts()` parses them into typed entries, and
+  a new `validate_mounts()` helper checks them at build time.
+
+## [0.10.0] - 2026-06-18
+
+This release replaces the per-class capability types with a single uniform model.
+
+### Changed
+
+- **Uniform capability model (breaking).** The per-class structs
+  (`FilesystemCap`/`HttpCap`/`SocketsCap`) are replaced by one
+  `CapabilityRequest` + provider-defined `Constraint` envelope, keyed by
+  capability id. `Capabilities` now serializes as a map keyed by id.
+
+### Fixed
+
+- `LocalizedString` now serializes untagged (a bare string or a map) instead of
+  `{"Plain": "…"}`.
+
+### Removed
+
+- Dropped the unused `CapabilityRequest.optional` field (YAGNI).
+
 ## [0.9.0] - 2026-06-16
 
 This release moves component metadata out of the SDK macros into `act-build pack`.
