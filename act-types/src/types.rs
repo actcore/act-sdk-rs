@@ -480,8 +480,22 @@ mod mount_tests {
     }
 
     #[test]
+    fn bind_without_guest_fails() {
+        let m = FilesystemMount {
+            kind: MountType::Bind,
+            guest: None,
+            host: Some("~/.ows".into()),
+        };
+        assert!(validate_mounts(&[m]).unwrap_err().contains("guest"));
+    }
+
+    #[test]
     fn drive_letter_guest_fails() {
-        assert!(validate_mounts(&[bind("/c:/x", "~/.ows")]).is_err());
+        assert!(
+            validate_mounts(&[bind("/c:/x", "~/.ows")])
+                .unwrap_err()
+                .contains("drive letter or backslash")
+        );
     }
 
     #[test]
@@ -510,6 +524,7 @@ mod mount_tests {
 
         let v = serde_json::to_value(&m).unwrap();
         // `type` defaults to bind and is omitted only if we don't skip; we DO serialize it.
+        assert_eq!(v["type"], "bind");
         assert_eq!(v["guest"], "/ows");
         assert_eq!(v["host"], "~/.ows");
     }
