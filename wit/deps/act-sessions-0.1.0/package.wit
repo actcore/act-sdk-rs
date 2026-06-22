@@ -47,8 +47,7 @@ interface session-provider {
   /// Components MAY perform I/O at any time (notably bridges
   /// fetching upstream schemas). Hosts SHOULD treat this call as
   /// potentially slow.
-  get-open-session-args-schema: async func(metadata: metadata)
-    -> result<string, error>;
+  get-open-session-args-schema: async func(metadata: metadata) -> result<string, error>;
 
   /// Open a new session.
   ///
@@ -65,8 +64,7 @@ interface session-provider {
   ///
   /// Errors at open are returned as `result::err(error)` — auth
   /// failure, capacity exceeded, malformed args.
-  open-session: async func(args: metadata, metadata: metadata)
-    -> result<session, error>;
+  open-session: async func(args: metadata, metadata: metadata) -> result<session, error>;
 
   /// Polite shutdown signal. Best-effort, synchronous, swallows
   /// errors by design.

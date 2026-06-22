@@ -1,0 +1,14 @@
+# Registry mapping for ACT WIT packages (used by `wkg wit fetch` via WKG_CONFIG_FILE).
+#
+# The `act` namespace resolves to the actcore.dev wasm-pkg registry, which
+# advertises its OCI backend (ghcr.io/actcore) through
+# https://actcore.dev/.well-known/wasm-pkg/registry.json. The act:* WIT
+# packages are public, so `wkg wit fetch` needs no credentials.
+#
+# Unlike act-cli / the components, the fetched `wit/deps/` is committed here so
+# act-sdk-rs is a self-contained crate (and the examples can symlink to it).
+# Re-run the fetch to bump the pinned versions:
+#
+#   WKG_CONFIG_FILE=wkg-registry.toml wkg wit fetch --type wit
+[namespace_registries]
+act = "actcore.dev"
