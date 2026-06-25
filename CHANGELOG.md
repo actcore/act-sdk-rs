@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-06-26
+
+### Changed
+
+- **`act-types`: `wasi:sockets` capability grants may now omit `ports`** to allow
+  any port. `SocketsAllow.ports` is now `Option<Vec<u16>>` (`None`/omitted = any
+  port); previously a non-empty list was required. Breaking for `act-types`
+  consumers that construct or match on `SocketsAllow.ports`. `act-sdk` and
+  `act-sdk-macros` are version-only bumps (no API change).
+
 ## [0.12.0] - 2026-06-26
 
 This release migrates the SDK to `act:tools@0.2.0` and `act:sessions@0.2.0`

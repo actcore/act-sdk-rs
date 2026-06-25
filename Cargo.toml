@@ -8,11 +8,11 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
-act-types = { version = "0.12", path = "act-types" }
-act-sdk-macros = { version = "0.12", path = "act-sdk-macros" }
+act-types = { version = "0.13", path = "act-types" }
+act-sdk-macros = { version = "0.13", path = "act-sdk-macros" }
 
 [workspace.package]
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/actcore/act-sdk-rs"
