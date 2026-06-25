@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-06-26
+
+Re-publish completing 0.13.0: the workspace `cargo publish` failed partway in CI —
+`act-types` and `act-sdk-macros` reached 0.13.0 but `act-sdk` stayed at 0.12.0.
+No code changes from 0.13.0; this release re-publishes all three crates in lockstep.
+
 ## [0.13.0] - 2026-06-26
 
 ### Changed
