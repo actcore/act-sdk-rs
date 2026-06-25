@@ -246,8 +246,9 @@ pub struct HttpAllow {
 
 /// One entry in a `[std.capabilities."wasi:sockets"].allow` array.
 ///
-/// Exactly one of `host` or `cidr` is required. `ports` is required and
-/// must be non-empty — there is no "any port". `protocols` defaults to
+/// Exactly one of `host` or `cidr` is required. `ports` is optional: omit it
+/// (or set it absent) to declare a ceiling over **any port**; provide a
+/// non-empty list to restrict to specific ports. `protocols` defaults to
 /// `["tcp", "udp"]` (both).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SocketsAllow {
@@ -258,8 +259,9 @@ pub struct SocketsAllow {
     /// CIDR (IPv4 or IPv6). Mutually exclusive with `host`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cidr: Option<String>,
-    /// Ports this rule applies to. Required, non-empty.
-    pub ports: Vec<u16>,
+    /// Ports this rule applies to. `None` (omitted) means **any port**.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ports: Option<Vec<u16>>,
     /// Protocols this rule applies to. Defaults to both.
     #[serde(
         default = "default_socket_protocols",
@@ -937,7 +939,7 @@ ports = [80, 443]
         let b = &allow[1];
         assert_eq!(b.host, None);
         assert_eq!(b.cidr.as_deref(), Some("10.0.0.0/8"));
-        assert_eq!(b.ports, vec![80, 443]);
+        assert_eq!(b.ports, Some(vec![80, 443]));
         // `protocols` omitted on the cidr entry → default tcp+udp applies on parse.
         assert_eq!(b.protocols, vec![SocketProtocol::Tcp, SocketProtocol::Udp]);
     }
