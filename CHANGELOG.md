@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-26
+
+This release migrates the SDK to `act:tools@0.2.0` and `act:sessions@0.2.0`
+(`act:core@0.4.0` is unchanged).
+
+### Changed
+
+- **Migrated to `act:tools@0.2.0` / `act:sessions@0.2.0` (breaking).** Each
+  package extracted its data model into a new function-free, stream-free `types`
+  interface. `tool-definition`, `content-part`, `tool-event` and
+  `list-tools-response` now live in `act:tools/types`; the `session` record now
+  lives in `act:sessions/types`. `tool-result` (the only `stream<>`-bearing
+  type) and the async `tool-provider` functions stay in `tool-provider`; the
+  `session-provider` functions stay in `session-provider`.
+- **Generated-binding paths shifted accordingly.** In the Rust bindings, types
+  that `tool-provider` does not `use` directly (`ToolDefinition`, `ContentPart`)
+  and the `act:core` `LocalizedString` now resolve under `act::tools::types` /
+  `act::core::types` rather than `exports::act::tools::tool_provider`.
+  `ToolResult` and the `Guest` traits keep their previous locations. The
+  `#[act_component]` macro and the raw-binding examples were updated to match.
+- Vendored WIT deps under `wit/deps/` bumped to `act-tools-0.2.0` /
+  `act-sessions-0.2.0`; example world files now export the `@0.2.0` interfaces.
+
 ## [0.11.0] - 2026-06-22
 
 ### Added

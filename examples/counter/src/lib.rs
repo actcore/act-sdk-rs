@@ -5,6 +5,9 @@ wit_bindgen::generate!({
 });
 
 use exports::act::tools::tool_provider::*;
+// act:tools@0.2.0 moved the data model to a separate `types` interface;
+// ToolDefinition, ContentPart and LocalizedString live there now.
+use act::tools::types::{ContentPart, LocalizedString, ToolDefinition};
 
 /// Encode a value as CBOR bytes.
 fn to_cbor(value: &serde_json::Value) -> Vec<u8> {

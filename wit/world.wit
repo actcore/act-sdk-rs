@@ -5,6 +5,6 @@ package act:sdk-deps;
 // (see wkg-registry.toml) knows which act:* packages to resolve and write into
 // `wit/deps/`. The fetched deps are committed; the examples symlink to them.
 world deps {
-  export act:tools/tool-provider@0.1.0;
-  export act:sessions/session-provider@0.1.0;
+  export act:tools/tool-provider@0.2.0;
+  export act:sessions/session-provider@0.2.0;
 }

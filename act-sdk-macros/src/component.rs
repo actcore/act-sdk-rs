@@ -97,19 +97,19 @@ pub fn generate(module: &ItemMod) -> syn::Result<TokenStream> {
         #(#arg_structs)*
 
         /// Convert a RawToolEvent to a WIT StreamEvent.
-        fn __raw_to_wit(raw: ::act_sdk::context::RawToolEvent) -> exports::act::tools::tool_provider::ToolEvent {
+        fn __raw_to_wit(raw: ::act_sdk::context::RawToolEvent) -> act::tools::types::ToolEvent {
             match raw {
                 ::act_sdk::context::RawToolEvent::Content { data, mime_type, metadata } => {
-                    exports::act::tools::tool_provider::ToolEvent::Content(exports::act::tools::tool_provider::ContentPart {
+                    act::tools::types::ToolEvent::Content(act::tools::types::ContentPart {
                         data,
                         mime_type,
                         metadata,
                     })
                 }
                 ::act_sdk::context::RawToolEvent::Error { kind, message, default_language: _ } => {
-                    exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                    act::tools::types::ToolEvent::Error(act::tools::types::Error {
                         kind,
-                        message: exports::act::tools::tool_provider::LocalizedString::Plain(message),
+                        message: act::core::types::LocalizedString::Plain(message),
                         metadata: vec![],
                     })
                 }
@@ -125,8 +125,8 @@ pub fn generate(module: &ItemMod) -> syn::Result<TokenStream> {
         impl exports::act::tools::tool_provider::Guest for __ActComponent {
             async fn list_tools(
                 _metadata: Vec<(String, Vec<u8>)>,
-            ) -> Result<exports::act::tools::tool_provider::ListToolsResponse, exports::act::tools::tool_provider::Error> {
-                Ok(exports::act::tools::tool_provider::ListToolsResponse {
+            ) -> Result<act::tools::types::ListToolsResponse, act::tools::types::Error> {
+                Ok(act::tools::types::ListToolsResponse {
                     metadata: vec![],
                     tools: vec![
                         #(#tool_defs),*
@@ -143,9 +143,9 @@ pub fn generate(module: &ItemMod) -> syn::Result<TokenStream> {
                 match __name.as_str() {
                     #(#call_arms)*
                     __other => exports::act::tools::tool_provider::ToolResult::Immediate(vec![
-                        exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                        act::tools::types::ToolEvent::Error(act::tools::types::Error {
                             kind: ::act_sdk::constants::ERR_NOT_FOUND.to_string(),
-                            message: exports::act::tools::tool_provider::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
+                            message: act::core::types::LocalizedString::Plain(format!("Tool '{}' not found", __other)),
                             metadata: vec![],
                         })
                     ])
@@ -328,9 +328,9 @@ fn gen_tool_definition(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
     }
 
     quote! {
-        exports::act::tools::tool_provider::ToolDefinition {
+        act::tools::types::ToolDefinition {
             name: #name.to_string(),
-            description: exports::act::tools::tool_provider::LocalizedString::Plain(#desc.to_string()),
+            description: act::core::types::LocalizedString::Plain(#desc.to_string()),
             parameters_schema: #schema_expr,
             metadata: vec![#(#metadata_entries),*],
         }
@@ -354,9 +354,9 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                 Ok(v) => v,
                 Err(e) => {
                     return exports::act::tools::tool_provider::ToolResult::Immediate(vec![
-                        exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                        act::tools::types::ToolEvent::Error(act::tools::types::Error {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: exports::act::tools::tool_provider::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
                     ]);
@@ -393,9 +393,9 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                 Ok(v) => v,
                 Err(e) => {
                     return exports::act::tools::tool_provider::ToolResult::Immediate(vec![
-                        exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                        act::tools::types::ToolEvent::Error(act::tools::types::Error {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: exports::act::tools::tool_provider::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
+                            message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize arguments: {}", e)),
                             metadata: vec![],
                         })
                     ]);
@@ -435,9 +435,9 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                     Ok(v) => v,
                     Err(e) => {
                         let _ = __wit_writer.write_all(vec![
-                            exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                            act::tools::types::ToolEvent::Error(act::tools::types::Error {
                                 kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                                message: exports::act::tools::tool_provider::LocalizedString::Plain(format!("Failed to deserialize metadata: {}", e)),
+                                message: act::core::types::LocalizedString::Plain(format!("Failed to deserialize metadata: {}", e)),
                                 metadata: vec![],
                             })
                         ]).await;
@@ -465,12 +465,12 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
         quote! {
             #tool_name => {
                 #deser_code
-                let (mut __wit_writer, __reader) = wit_stream::new::<exports::act::tools::tool_provider::ToolEvent>();
+                let (mut __wit_writer, __reader) = wit_stream::new::<act::tools::types::ToolEvent>();
                 wit_bindgen::spawn_local(async move {
                     #metadata_parse
                     let __result = #awaited_call;
                     let __ctx_events = __ctx.__take_events();
-                    let mut __wit_events: Vec<exports::act::tools::tool_provider::ToolEvent> = __ctx_events
+                    let mut __wit_events: Vec<act::tools::types::ToolEvent> = __ctx_events
                         .into_iter()
                         .map(|e| __raw_to_wit(e))
                         .collect();
@@ -480,9 +480,9 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                             __wit_events.extend(__response_events.into_iter().map(|e| __raw_to_wit(e)));
                         }
                         Err(__err) => {
-                            __wit_events.push(exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                            __wit_events.push(act::tools::types::ToolEvent::Error(act::tools::types::Error {
                                 kind: __err.kind.clone(),
-                                message: exports::act::tools::tool_provider::LocalizedString::Plain(__err.message.clone()),
+                                message: act::core::types::LocalizedString::Plain(__err.message.clone()),
                                 metadata: vec![],
                             }));
                         }
@@ -503,16 +503,16 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
                 match __result {
                     Ok(__val) => {
                         #ok_response
-                        let __wit_events: Vec<exports::act::tools::tool_provider::ToolEvent> = __response_events
+                        let __wit_events: Vec<act::tools::types::ToolEvent> = __response_events
                             .into_iter()
                             .map(|e| __raw_to_wit(e))
                             .collect();
                         exports::act::tools::tool_provider::ToolResult::Immediate(__wit_events)
                     }
                     Err(__err) => exports::act::tools::tool_provider::ToolResult::Immediate(vec![
-                        exports::act::tools::tool_provider::ToolEvent::Error(exports::act::tools::tool_provider::Error {
+                        act::tools::types::ToolEvent::Error(act::tools::types::Error {
                             kind: __err.kind.clone(),
-                            message: exports::act::tools::tool_provider::LocalizedString::Plain(__err.message.clone()),
+                            message: act::core::types::LocalizedString::Plain(__err.message.clone()),
                             metadata: vec![],
                         })
                     ])
@@ -700,7 +700,7 @@ fn gen_session_provider_impl(hooks: &SessionHooks) -> TokenStream {
                 ::act_sdk::__private::serde_json::to_string(&schema).map_err(|e| {
                     exports::act::sessions::session_provider::Error {
                         kind: ::act_sdk::constants::ERR_INTERNAL.to_string(),
-                        message: exports::act::tools::tool_provider::LocalizedString::Plain(
+                        message: act::core::types::LocalizedString::Plain(
                             format!("schema serialization failed: {e}")
                         ),
                         metadata: vec![],
@@ -711,7 +711,7 @@ fn gen_session_provider_impl(hooks: &SessionHooks) -> TokenStream {
             async fn open_session(
                 args: Vec<(String, Vec<u8>)>,
                 _metadata: Vec<(String, Vec<u8>)>,
-            ) -> Result<exports::act::sessions::session_provider::Session, exports::act::sessions::session_provider::Error> {
+            ) -> Result<act::sessions::types::Session, exports::act::sessions::session_provider::Error> {
                 // Re-shape the metadata-style args (Vec<(String, CBOR)>) into a
                 // single CBOR map and decode into the user's args type.
                 let args_map: ::std::collections::BTreeMap<String, ::act_sdk::__private::serde_json::Value> = args
@@ -730,7 +730,7 @@ fn gen_session_provider_impl(hooks: &SessionHooks) -> TokenStream {
                     Err(e) => {
                         return Err(exports::act::sessions::session_provider::Error {
                             kind: ::act_sdk::constants::ERR_INVALID_ARGS.to_string(),
-                            message: exports::act::tools::tool_provider::LocalizedString::Plain(
+                            message: act::core::types::LocalizedString::Plain(
                                 format!("Failed to deserialize session args: {e}")
                             ),
                             metadata: vec![],
@@ -739,13 +739,13 @@ fn gen_session_provider_impl(hooks: &SessionHooks) -> TokenStream {
                 };
 
                 match #open_call {
-                    Ok(id) => Ok(exports::act::sessions::session_provider::Session {
+                    Ok(id) => Ok(act::sessions::types::Session {
                         id,
                         metadata: vec![],
                     }),
                     Err(err) => Err(exports::act::sessions::session_provider::Error {
                         kind: err.kind.clone(),
-                        message: exports::act::tools::tool_provider::LocalizedString::Plain(err.message.clone()),
+                        message: act::core::types::LocalizedString::Plain(err.message.clone()),
                         metadata: vec![],
                     }),
                 }

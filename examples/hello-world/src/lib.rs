@@ -5,6 +5,11 @@ wit_bindgen::generate!({
 });
 
 use exports::act::tools::tool_provider::*;
+// In act:tools@0.2.0 the data model moved to a separate `types` interface.
+// `tool-provider` still re-exports the types it uses directly (ToolEvent,
+// ListToolsResponse, Error, plus ToolResult/Guest), but ToolDefinition,
+// ContentPart and LocalizedString must be imported from `types`.
+use act::tools::types::{ContentPart, LocalizedString, ToolDefinition};
 
 /// Decode CBOR bytes to a JSON value.
 fn from_cbor(bytes: &[u8]) -> serde_json::Value {
