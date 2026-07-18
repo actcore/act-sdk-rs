@@ -319,6 +319,18 @@ pub struct StdComponentInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub default_language: Option<String>,
+    /// Author of the component. Populated by `act-build` from the language
+    /// manifest (Cargo.toml `[package].authors`, pyproject `[project].authors`,
+    /// package.json `author`); an `act.toml` `[std] author` overrides it.
+    /// OPTIONAL — omitted from the CBOR section when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// SPDX license expression for the component. Populated by `act-build` from
+    /// the language manifest (Cargo.toml `[package].license`, pyproject
+    /// `[project].license`, package.json `license`); an `act.toml` `[std]
+    /// license` overrides it. OPTIONAL — omitted from the CBOR section when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Capabilities::is_empty")]
     pub capabilities: Capabilities,
 }
@@ -681,6 +693,47 @@ mod tests {
         let m = Metadata::from(v);
         assert_eq!(m.get("key"), Some(&json!(42)));
         assert_eq!(m.get_as::<u32>("key"), Some(42));
+    }
+
+    #[test]
+    fn author_license_present_roundtrip_and_omitted_when_none() {
+        // Present: both fields serialize (JSON + CBOR round-trip).
+        let mut info = ComponentInfo::new("test", "0.1.0", "test component");
+        info.std.author = Some("Ada Lovelace <ada@example.com>".to_string());
+        info.std.license = Some("Apache-2.0".to_string());
+
+        let json = serde_json::to_value(&info).unwrap();
+        assert_eq!(json["std"]["author"], "Ada Lovelace <ada@example.com>");
+        assert_eq!(json["std"]["license"], "Apache-2.0");
+
+        let mut buf = Vec::new();
+        ciborium::into_writer(&info, &mut buf).unwrap();
+        let decoded: ComponentInfo = ciborium::from_reader(&buf[..]).unwrap();
+        assert_eq!(
+            decoded.std.author.as_deref(),
+            Some("Ada Lovelace <ada@example.com>")
+        );
+        assert_eq!(decoded.std.license.as_deref(), Some("Apache-2.0"));
+
+        // Absent: `skip_serializing_if` omits the keys entirely.
+        let bare = ComponentInfo::new("test", "0.1.0", "test");
+        assert!(bare.std.author.is_none());
+        assert!(bare.std.license.is_none());
+        let bare_json = serde_json::to_value(&bare).unwrap();
+        assert!(bare_json["std"].get("author").is_none());
+        assert!(bare_json["std"].get("license").is_none());
+    }
+
+    #[test]
+    fn old_component_without_author_license_still_parses() {
+        // Forward-compat: a section from an older component omits the new keys.
+        let old = serde_json::json!({
+            "std": { "name": "legacy", "version": "0.1.0", "description": "old" }
+        });
+        let info: ComponentInfo = serde_json::from_value(old).unwrap();
+        assert_eq!(info.std.name, "legacy");
+        assert!(info.std.author.is_none());
+        assert!(info.std.license.is_none());
     }
 
     #[test]
