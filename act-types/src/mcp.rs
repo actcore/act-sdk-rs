@@ -16,6 +16,9 @@ use serde_with::{base64::Base64, serde_as, skip_serializing_none};
 pub const PROTOCOL_VERSION: &str = "2025-11-25";
 
 // Re-export JSON-RPC types for convenience.
+// Both modules are deprecated together and removed together, so the internal
+// re-export must not warn on the way out.
+#[allow(deprecated)]
 pub use crate::jsonrpc::{
     Body as JsonRpcBody, Error as JsonRpcError, Request as JsonRpcRequest,
     Response as JsonRpcResponse, Version as JsonRpcVersion,
