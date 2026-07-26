@@ -23,6 +23,14 @@ pub mod prelude {
 // Re-export act-types constants for use by generated code and consumers
 pub use act_types::constants;
 
+/// Spawn a concurrent task on the component's async runtime.
+///
+/// Re-exported from `wit-bindgen` so components do not need their own
+/// `wit-bindgen` dependency. Use it when a tool has to produce data
+/// concurrently with the call it is serving (e.g. filling a request-body
+/// stream while awaiting the response).
+pub use wit_bindgen::spawn_local;
+
 // Re-export dependencies that generated code needs
 #[doc(hidden)]
 pub mod __private {

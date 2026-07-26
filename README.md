@@ -16,6 +16,16 @@ Rust SDK for the [ACT protocol](https://github.com/actcore/act-spec) — define 
 
 ## Quick start
 
+```toml
+# Cargo.toml
+[dependencies]
+act-sdk = "0.14"
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+```
+
+`act-sdk` brings its own `wit-bindgen`; components do not declare it themselves.
+
 ```rust
 use act_sdk::prelude::*;
 

@@ -84,10 +84,11 @@ pub fn generate(module: &ItemMod) -> syn::Result<TokenStream> {
         use ::act_sdk::__private::schemars;
 
         // WIT bindings generation
-        wit_bindgen::generate!({
+        ::act_sdk::__private::wit_bindgen::generate!({
             path: "wit",
             world: "component-world",
             generate_all,
+            runtime_path: "::act_sdk::__private::wit_bindgen::rt",
         });
 
         // User-defined items from the module body
@@ -466,7 +467,7 @@ fn gen_call_arm(tool: &ToolInfo, _default_lang: &str) -> TokenStream {
             #tool_name => {
                 #deser_code
                 let (mut __wit_writer, __reader) = wit_stream::new::<act::tools::types::ToolEvent>();
-                wit_bindgen::spawn_local(async move {
+                ::act_sdk::spawn_local(async move {
                     #metadata_parse
                     let __result = #awaited_call;
                     let __ctx_events = __ctx.__take_events();
