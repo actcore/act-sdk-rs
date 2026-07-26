@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-11
+
+### Added
+- `std.author` and `std.license` on component metadata (`StdComponentInfo`).
+  Both optional; `act-build` fills them from the language manifest
+  (`Cargo.toml` `[package]`, `pyproject.toml` `[project]`, `package.json`), and
+  an `act.toml` `[std]` entry overrides it. Omitted from the CBOR section when
+  absent, and sections written before this release still parse.
+- `act_sdk::spawn_local` — re-exported from `wit-bindgen`, for tools that need
+  to run a task concurrently with the call they are serving (e.g. filling a
+  request-body stream while awaiting the response).
+
+### Changed
+- **Components no longer declare `wit-bindgen`.** `#[act_component]` generates
+  the WIT bindings through act-sdk's own copy of the runtime (`runtime_path`),
+  so a component's `Cargo.toml` needs nothing beyond `act-sdk`. The SDK now owns
+  the `wit-bindgen` version; bumping it is no longer an ecosystem-wide change.
+- Bump `wit-bindgen` to 0.60 and `wasip3` to 0.7.1.
+
+### Deprecated
+- `act-types::mcp` and `act-types::jsonrpc`. MCP wire types now come from
+  `rmcp::model`, which tracks protocol revisions; the hand-rolled copy is pinned
+  to 2025-11-25 and models none of 2026-07-28 — no structured content, no audio
+  or resource-link blocks, no per-request `_meta`. `jsonrpc` exists only to be
+  re-exported through `mcp` and goes with it. `mcp-bridge`, the last consumer,
+  has moved to `rmcp::model`. Both are scheduled for removal in 0.15.0.
+
+### Migration
+No breaking changes. To drop the redundant dependency, delete the `wit-bindgen`
+line from the component's `Cargo.toml` and replace any direct
+`wit_bindgen::spawn_local` call with `act_sdk::spawn_local`. Components that keep
+the entry continue to build — the dependency simply goes unused.
+
 ## [0.13.1] - 2026-06-26
 
 Re-publish completing 0.13.0: the workspace `cargo publish` failed partway in CI —
