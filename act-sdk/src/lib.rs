@@ -1,6 +1,7 @@
 pub mod bytes;
 pub mod cbor;
 pub mod context;
+pub mod credentials;
 pub mod response;
 pub mod sessions;
 pub mod types;
