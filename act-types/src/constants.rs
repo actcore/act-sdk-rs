@@ -20,6 +20,11 @@ pub const COMPONENT_NS_STD: &str = "std";
 pub const CAP_FILESYSTEM: &str = "wasi:filesystem";
 pub const CAP_SOCKETS: &str = "wasi:sockets";
 pub const CAP_HTTP: &str = "wasi:http";
+/// Semantic, binary capability class: presence in the manifest (not any
+/// constraint) decides whether it is declared. See
+/// `act_policy::providers::credentials` (act-cli) for the `declared`-slice
+/// contract this id's provider requires from callers.
+pub const CAP_CREDENTIALS: &str = "act:credentials";
 
 // ── Tool definition metadata keys ──
 
