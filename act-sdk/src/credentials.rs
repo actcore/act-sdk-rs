@@ -12,12 +12,17 @@
 //! Two mechanisms prevent it, and which applies depends on where the type
 //! lives:
 //!
-//! - [`Secret::as_opaque`] and [`Secret::as_basic`] are gated on
-//!   [`Secret::kind`] and return `None` for any other kind, even if the fields
-//!   would otherwise "fit".
+//! - [`Secret::as_basic`] is gated on the registered field **names**
+//!   `std:username` and `std:password`. Names carry meaning and are unique, so
+//!   reading them by name is not a guess; guessing would be reading two
+//!   arbitrary fields because there happen to be two.
 //! - [`Secret::as_oauth2`] takes the **field name**, because a stored record
 //!   carries names and values but no types. The caller says which field is the
 //!   OAuth one; the accessor never goes looking for a map that resembles one.
+//!
+//! There is no `as_opaque`. A `std:string` field's value *is* a CBOR string, so
+//! reading one is [`Secret::field_str`] with the name the component declared —
+//! there is no wrapper to unwrap and no canonical name to assume.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -127,22 +132,16 @@ impl Secret {
         }
     }
 
-    /// The bearer value of a `std:opaque` secret. `None` for any other
-    /// kind, even if a `std:value` field happens to be present.
-    pub fn as_opaque(&self) -> Option<&str> {
-        if self.kind != "std:opaque" {
-            return None;
-        }
-        self.field_str("std:value")
-    }
-
-    /// The `(username, password)` pair of a `std:basic` secret. `None`
-    /// for any other kind, even if `std:username`/`std:password` fields
-    /// happen to be present — see the module docs.
+    /// The `(username, password)` pair, when the credential carries both
+    /// registered field names as CBOR strings.
+    ///
+    /// Gated on the **names**, not on a credential-level kind: meaning lives in
+    /// field names (design §3.2), and `std:username` / `std:password` are
+    /// registered, so reading them by name reads the meaning. That is not the
+    /// forbidden inference — what a component must never do is guess from how
+    /// *many* fields are present, which is how a two-field client certificate
+    /// gets mistaken for a two-field password.
     pub fn as_basic(&self) -> Option<(&str, &str)> {
-        if self.kind != "std:basic" {
-            return None;
-        }
         Some((
             self.field_str("std:username")?,
             self.field_str("std:password")?,
@@ -230,45 +229,45 @@ mod tests {
 
     #[test]
     fn a_text_field_reads_back_as_a_string() {
-        let s = wit_secret("std:opaque", vec![("std:value", Value::Text("tok".into()))]);
-        assert_eq!(s.field_str("std:value"), Some("tok"));
-        assert_eq!(s.as_opaque(), Some("tok"));
+        // A std:string field's value IS the CBOR string — there is no wrapper
+        // and no canonical field name, so reading one is field_str by the name
+        // the component declared.
+        let s = wit_secret(
+            "acme:creds",
+            vec![("acme:token", Value::Text("tok".into()))],
+        );
+        assert_eq!(s.field_str("acme:token"), Some("tok"));
     }
 
     #[test]
     fn a_non_text_field_is_not_readable_as_a_string() {
         // The whole point of decoding CBOR rather than assuming String: an
         // integer field must not silently render as text.
-        let s = wit_secret("std:opaque", vec![("std:value", Value::Integer(7.into()))]);
-        assert_eq!(s.field_str("std:value"), None);
-        assert_eq!(
-            s.as_opaque(),
-            None,
-            "a non-text std:value is not an opaque secret"
-        );
+        let s = wit_secret("acme:creds", vec![("acme:token", Value::Integer(7.into()))]);
+        assert_eq!(s.field_str("acme:token"), None);
     }
 
     #[test]
-    fn accessors_are_gated_on_kind_not_on_field_shape() {
+    fn a_two_field_credential_with_other_names_is_not_basic_auth() {
+        // The confusion the naming rule exists to prevent: a client certificate
+        // is also two secret fields. It is told apart by its field NAMES, which
+        // is why nothing here counts fields.
         let s = wit_secret(
-            "std:client-cert",
+            "acme:creds",
             vec![
-                ("std:username", Value::Text("u".into())),
-                ("std:password", Value::Text("p".into())),
+                ("std:cert", Value::Text("-----BEGIN…".into())),
+                ("std:private-key", Value::Text("-----BEGIN…".into())),
             ],
         );
-        assert_eq!(
-            s.as_basic(),
-            None,
-            "fields fit std:basic but the kind does not"
-        );
-        assert_eq!(s.as_opaque(), None);
+        assert_eq!(s.as_basic(), None);
     }
 
     #[test]
-    fn as_basic_returns_both_halves_for_the_right_kind() {
+    fn as_basic_returns_both_halves_when_both_names_are_present() {
+        // Gated on the registered names, not on a credential-level kind — the
+        // kind here is deliberately something else.
         let s = wit_secret(
-            "std:basic",
+            "acme:creds",
             vec![
                 ("std:username", Value::Text("u".into())),
                 ("std:password", Value::Text("p".into())),
@@ -288,19 +287,18 @@ mod tests {
         assert_eq!(s.field_str("acme:serial"), Some("42"));
         assert!(matches!(s.field("acme:serial"), Some(Value::Text(_))));
         assert_eq!(s.as_basic(), None);
-        assert_eq!(s.as_opaque(), None);
     }
 
     #[test]
     fn a_malformed_field_names_itself_in_the_error() {
         let err = Secret::from_wit(
-            "std:opaque".into(),
-            vec![("std:value".into(), vec![0xff, 0xff, 0xff])],
+            "acme:creds".into(),
+            vec![("acme:token".into(), vec![0xff, 0xff, 0xff])],
         )
         .expect_err("undecodable CBOR must not be swallowed");
-        assert_eq!(err.field, "std:value");
+        assert_eq!(err.field, "acme:token");
         assert!(
-            err.to_string().contains("std:value"),
+            err.to_string().contains("acme:token"),
             "the message must name the field: {err}"
         );
         assert!(

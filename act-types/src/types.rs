@@ -358,7 +358,7 @@ pub struct StdCredentialField {
     pub key: String,
     #[serde(default)]
     pub label: String,
-    #[serde(rename = "type", default = "std_opaque")]
+    #[serde(rename = "type", default = "std_string")]
     pub field_type: String,
     #[serde(default = "yes")]
     pub secret: bool,
@@ -371,8 +371,8 @@ pub struct StdCredentialField {
     pub scopes: Vec<String>,
 }
 
-fn std_opaque() -> String {
-    "std:opaque".to_string()
+fn std_string() -> String {
+    "std:string".to_string()
 }
 
 fn yes() -> bool {
@@ -1102,7 +1102,7 @@ ports = [5900]
             fields: vec![StdCredentialField {
                 key: "acme:tenant".into(),
                 label: "Tenant".into(),
-                field_type: "std:opaque".into(),
+                field_type: "std:string".into(),
                 secret: false,
                 required: true,
                 resource: None,
@@ -1112,6 +1112,6 @@ ports = [5900]
         let json = serde_json::to_string(&info).unwrap();
         let back: StdComponentInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(back.credentials, info.credentials);
-        assert_eq!(back.credentials[0].fields[0].field_type, "std:opaque");
+        assert_eq!(back.credentials[0].fields[0].field_type, "std:string");
     }
 }
