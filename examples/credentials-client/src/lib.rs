@@ -90,7 +90,13 @@ mod component {
         Ok(Description {
             kind: secret.kind().to_string(),
             fields: secret.fields.keys().cloned().collect(),
-            scopes: secret.as_oauth2().map(|o| o.scopes).unwrap_or_default(),
+            // The OAuth field, when there is one, is named by the component
+            // that declared it — a stored record carries no types, so nothing
+            // can find it by shape. This example uses "tok" by convention.
+            scopes: secret
+                .as_oauth2("tok")
+                .map(|o| o.scopes)
+                .unwrap_or_default(),
         })
     }
 }

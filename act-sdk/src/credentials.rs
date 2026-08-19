@@ -6,12 +6,18 @@
 //! lives here instead: adding a kind is an ordinary library minor bump,
 //! not an ABI change.
 //!
-//! Every accessor is gated on [`Secret::kind`], never on which fields
-//! happen to be present. Guessing a kind from field shape is how a
-//! `std:client-cert` (a certificate and a private key — two fields) gets
-//! mistaken for a `std:basic` (a username and a password — also two
-//! fields). An accessor for a kind other than the secret's own always
-//! returns `None`, even if the fields would otherwise "fit".
+//! **No accessor infers meaning from shape.** Guessing from field shape is how
+//! a `std:client-cert` (a certificate and a private key — two fields) gets
+//! mistaken for a `std:basic` (a username and a password — also two fields).
+//! Two mechanisms prevent it, and which applies depends on where the type
+//! lives:
+//!
+//! - [`Secret::as_opaque`] and [`Secret::as_basic`] are gated on
+//!   [`Secret::kind`] and return `None` for any other kind, even if the fields
+//!   would otherwise "fit".
+//! - [`Secret::as_oauth2`] takes the **field name**, because a stored record
+//!   carries names and values but no types. The caller says which field is the
+//!   OAuth one; the accessor never goes looking for a map that resembles one.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -143,24 +149,41 @@ impl Secret {
         ))
     }
 
-    /// The typed [`OAuth2`] view of a `std:oauth2` secret. `None` for any
-    /// other kind, and `None` when the required `std:access-token` is
-    /// missing or is not a CBOR string.
+    /// The typed [`OAuth2`] view of one `std:oauth2`-typed **field**.
     ///
-    /// Field encodings are fixed by `ACT-CONSTANTS.md` §8.2:
-    /// `std:access-token` is a string, `std:expires-at` a u64 of Unix
-    /// seconds, `std:scopes` a list of strings. A field of any other CBOR
-    /// type is treated as absent rather than coerced — coercion here would
-    /// mean inventing scopes or an expiry the issuer never granted.
-    pub fn as_oauth2(&self) -> Option<OAuth2> {
-        if self.kind != "std:oauth2" {
+    /// The type is a property of the field, not of the credential (design
+    /// §3.2): a `std:oauth2` field holds a CBOR **map**, and a credential may
+    /// carry others beside it — a tenant id, an account identifier — as
+    /// ordinary string fields. Which field is the OAuth one is the caller's
+    /// knowledge, because a stored record carries names and values but no
+    /// types, and inferring the answer from shape is exactly what a component
+    /// must not do.
+    ///
+    /// `None` when `field` is absent, is not a map, or the map has no
+    /// `std:access-token` string. Inside the map, `std:expires-at` is a u64 of
+    /// Unix seconds and `std:scopes` a list of strings; a member of any other
+    /// CBOR type is treated as absent rather than coerced, because coercing
+    /// would mean reporting scopes or an expiry the issuer never granted.
+    ///
+    /// Keeping the map's members under their registered `std:` names — rather
+    /// than bare `access-token` — costs one prefix and buys a reader who can
+    /// find them in `ACT-CONSTANTS.md` §8.2 without knowing they are nested.
+    pub fn as_oauth2(&self, field: &str) -> Option<OAuth2> {
+        let Some(Value::Map(members)) = self.field(field) else {
             return None;
-        }
-        let expires_at = match self.field("std:expires-at") {
+        };
+        let member = |name: &str| {
+            members
+                .iter()
+                .find(|(k, _)| matches!(k, Value::Text(s) if s == name))
+                .map(|(_, v)| v)
+        };
+
+        let expires_at = match member("std:expires-at") {
             Some(Value::Integer(i)) => u64::try_from(*i).ok(),
             _ => None,
         };
-        let scopes = match self.field("std:scopes") {
+        let scopes = match member("std:scopes") {
             Some(Value::Array(items)) => items
                 .iter()
                 .filter_map(|v| match v {
@@ -170,8 +193,12 @@ impl Secret {
                 .collect(),
             _ => Vec::new(),
         };
+        let access_token = match member("std:access-token") {
+            Some(Value::Text(s)) => s.clone(),
+            _ => return None,
+        };
         Some(OAuth2 {
-            access_token: self.field_str("std:access-token")?.to_string(),
+            access_token,
             expires_at,
             scopes,
         })
@@ -282,41 +309,87 @@ mod tests {
         );
     }
 
-    #[test]
-    fn oauth2_reads_the_constants_registry_encodings() {
-        let s = wit_secret(
-            "std:oauth2",
-            vec![
-                ("std:access-token", Value::Text("at".into())),
-                ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
-                (
-                    "std:scopes",
-                    Value::Array(vec![
-                        Value::Text("repo".into()),
-                        Value::Text("read:org".into()),
-                    ]),
-                ),
-            ],
+    /// Build a credential holding one `std:oauth2`-typed field named `tok`,
+    /// whose value is the CBOR map the flow stores.
+    fn oauth_secret(members: Vec<(&str, Value)>) -> Secret {
+        let map = Value::Map(
+            members
+                .into_iter()
+                .map(|(k, v)| (Value::Text(k.into()), v))
+                .collect(),
         );
-        let o = s.as_oauth2().expect("std:oauth2 secret");
+        wit_secret("acme:creds", vec![("tok", map)])
+    }
+
+    #[test]
+    fn oauth2_reads_the_members_of_its_field_map() {
+        let s = oauth_secret(vec![
+            ("std:access-token", Value::Text("at".into())),
+            ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
+            (
+                "std:scopes",
+                Value::Array(vec![
+                    Value::Text("repo".into()),
+                    Value::Text("read:org".into()),
+                ]),
+            ),
+        ]);
+        let o = s.as_oauth2("tok").expect("std:oauth2 field");
         assert_eq!(o.access_token, "at");
         assert_eq!(o.expires_at, Some(1_760_000_000));
         assert_eq!(o.scopes, vec!["repo".to_string(), "read:org".to_string()]);
     }
 
     #[test]
-    fn space_separated_scopes_are_not_silently_accepted() {
-        // The pre-fix code split a string on spaces. ACT-CONSTANTS 8.2 says
-        // std:scopes is a list<string>; a string is malformed, and reading it
-        // as one scope-per-word would invent scopes the issuer never granted.
+    fn a_credential_may_carry_other_fields_beside_the_oauth_one() {
+        // The case that sank credential-level kinds: an OAuth token plus a
+        // tenant id the flow never issues. Under field-level types it is just
+        // two fields, and reading one does not disturb the other.
+        let map = Value::Map(vec![(
+            Value::Text("std:access-token".into()),
+            Value::Text("at".into()),
+        )]);
         let s = wit_secret(
-            "std:oauth2",
-            vec![
-                ("std:access-token", Value::Text("at".into())),
-                ("std:scopes", Value::Text("repo read:org".into())),
-            ],
+            "acme:creds",
+            vec![("tok", map), ("acme:tenant", Value::Text("t-42".into()))],
         );
-        let o = s.as_oauth2().expect("std:oauth2 secret");
+        assert_eq!(s.as_oauth2("tok").expect("oauth field").access_token, "at");
+        assert_eq!(s.field_str("acme:tenant"), Some("t-42"));
+    }
+
+    #[test]
+    fn flat_sibling_fields_are_not_read_as_oauth2() {
+        // The pre-rewrite shape: access-token and friends as top-level fields.
+        // That is no longer an OAuth credential, and must not be mistaken for
+        // one — the type lives on the field, and this field is not a map.
+        let s = wit_secret(
+            "acme:creds",
+            vec![("std:access-token", Value::Text("at".into()))],
+        );
+        assert_eq!(s.as_oauth2("std:access-token"), None);
+    }
+
+    #[test]
+    fn a_missing_or_non_map_field_is_none() {
+        let s = oauth_secret(vec![("std:access-token", Value::Text("at".into()))]);
+        assert_eq!(s.as_oauth2("nope"), None, "absent field");
+        assert_eq!(
+            s.as_oauth2("acme:tenant"),
+            None,
+            "a field that is not a map is not an OAuth credential"
+        );
+    }
+
+    #[test]
+    fn space_separated_scopes_are_not_silently_accepted() {
+        // ACT-CONSTANTS 8.2 says std:scopes is a list<string>; a string is
+        // malformed, and reading it as one scope-per-word would invent scopes
+        // the issuer never granted.
+        let s = oauth_secret(vec![
+            ("std:access-token", Value::Text("at".into())),
+            ("std:scopes", Value::Text("repo read:org".into())),
+        ]);
+        let o = s.as_oauth2("tok").expect("oauth field");
         assert!(
             o.scopes.is_empty(),
             "a non-list std:scopes must yield no scopes, got {:?}",
@@ -326,40 +399,34 @@ mod tests {
 
     #[test]
     fn a_string_expiry_is_not_parsed() {
-        let s = wit_secret(
-            "std:oauth2",
-            vec![
-                ("std:access-token", Value::Text("at".into())),
-                ("std:expires-at", Value::Text("1760000000".into())),
-            ],
-        );
+        let s = oauth_secret(vec![
+            ("std:access-token", Value::Text("at".into())),
+            ("std:expires-at", Value::Text("1760000000".into())),
+        ]);
         assert_eq!(
-            s.as_oauth2().expect("std:oauth2 secret").expires_at,
+            s.as_oauth2("tok").expect("oauth field").expires_at,
             None,
             "8.2 registers std:expires-at as u64; a string is malformed"
         );
     }
 
     #[test]
-    fn oauth2_without_an_access_token_is_none() {
-        let s = wit_secret("std:oauth2", vec![("std:scopes", Value::Array(vec![]))]);
-        assert_eq!(s.as_oauth2(), None, "access-token is required by 8.2");
+    fn without_an_access_token_the_field_is_not_an_oauth_credential() {
+        let s = oauth_secret(vec![("std:scopes", Value::Array(vec![]))]);
+        assert_eq!(s.as_oauth2("tok"), None);
     }
 
     #[test]
     fn a_non_string_scope_entry_is_dropped_not_stringified() {
-        let s = wit_secret(
-            "std:oauth2",
-            vec![
-                ("std:access-token", Value::Text("at".into())),
-                (
-                    "std:scopes",
-                    Value::Array(vec![Value::Text("repo".into()), Value::Integer(3.into())]),
-                ),
-            ],
-        );
+        let s = oauth_secret(vec![
+            ("std:access-token", Value::Text("at".into())),
+            (
+                "std:scopes",
+                Value::Array(vec![Value::Text("repo".into()), Value::Integer(3.into())]),
+            ),
+        ]);
         assert_eq!(
-            s.as_oauth2().expect("secret").scopes,
+            s.as_oauth2("tok").expect("oauth field").scopes,
             vec!["repo".to_string()]
         );
     }
@@ -386,16 +453,13 @@ mod tests {
 
     #[test]
     fn oauth2_debug_redacts_the_token_and_keeps_the_rest() {
-        let o = wit_secret(
-            "std:oauth2",
-            vec![
-                ("std:access-token", Value::Text("ghp-sentinel-token".into())),
-                ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
-                ("std:scopes", Value::Array(vec![Value::Text("repo".into())])),
-            ],
-        )
-        .as_oauth2()
-        .expect("std:oauth2 secret");
+        let o = oauth_secret(vec![
+            ("std:access-token", Value::Text("ghp-sentinel-token".into())),
+            ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
+            ("std:scopes", Value::Array(vec![Value::Text("repo".into())])),
+        ])
+        .as_oauth2("tok")
+        .expect("std:oauth2 field");
         let rendered = format!("{o:?}");
         assert!(
             !rendered.contains("ghp-sentinel-token"),
