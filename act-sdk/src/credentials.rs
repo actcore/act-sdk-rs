@@ -14,14 +14,33 @@
 //! returns `None`, even if the fields would otherwise "fit".
 
 use std::collections::BTreeMap;
+use std::fmt;
+
+use ciborium::Value;
 
 /// A credential as handed to the component: an open `kind` string plus a
-/// field map, mirroring the `act:credentials/store` WIT shape.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// field map, mirroring the `act:credentials/store` WIT shape — where each
+/// value crosses as CBOR bytes and may be a string, an integer, or a list.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Secret {
     pub kind: String,
-    pub fields: BTreeMap<String, String>,
+    pub fields: BTreeMap<String, Value>,
 }
+
+/// A field whose bytes were not valid CBOR. Names the field and nothing
+/// else: the bytes are credential material and must not reach a log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDecodeError {
+    pub field: String,
+}
+
+impl fmt::Display for FieldDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "credential field {} is not valid CBOR", self.field)
+    }
+}
+
+impl std::error::Error for FieldDecodeError {}
 
 /// Typed view of a `std:oauth2` secret, returned by [`Secret::as_oauth2`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +51,26 @@ pub struct OAuth2 {
 }
 
 impl Secret {
+    /// Build from the wire shape the generated bindings hand back:
+    /// `list<tuple<string, cbor>>`, i.e. field name to CBOR-encoded bytes.
+    pub fn from_wit(
+        kind: String,
+        fields: Vec<(String, Vec<u8>)>,
+    ) -> Result<Self, FieldDecodeError> {
+        let mut decoded = BTreeMap::new();
+        for (name, bytes) in fields {
+            let value: Value =
+                ciborium::from_reader(bytes.as_slice()).map_err(|_| FieldDecodeError {
+                    field: name.clone(),
+                })?;
+            decoded.insert(name, value);
+        }
+        Ok(Self {
+            kind,
+            fields: decoded,
+        })
+    }
+
     /// The secret's kind, e.g. `"std:basic"` or a vendor-defined string
     /// like `"acme:badge"`.
     pub fn kind(&self) -> &str {
@@ -40,14 +79,26 @@ impl Secret {
 
     /// Raw field access by key, independent of `kind`. Always available,
     /// including for kinds with no typed accessor.
-    pub fn field(&self, key: &str) -> Option<&str> {
-        self.fields.get(key).map(String::as_str)
+    pub fn field(&self, key: &str) -> Option<&Value> {
+        self.fields.get(key)
+    }
+
+    /// A field's text, when it is a CBOR string. `None` for any other CBOR
+    /// type — an integer field is not a string with extra steps.
+    pub fn field_str(&self, key: &str) -> Option<&str> {
+        match self.fields.get(key)? {
+            Value::Text(s) => Some(s.as_str()),
+            _ => None,
+        }
     }
 
     /// The bearer value of a `std:opaque` secret. `None` for any other
     /// kind, even if a `std:value` field happens to be present.
     pub fn as_opaque(&self) -> Option<&str> {
-        (self.kind == "std:opaque").then(|| self.field("std:value"))?
+        if self.kind != "std:opaque" {
+            return None;
+        }
+        self.field_str("std:value")
     }
 
     /// The `(username, password)` pair of a `std:basic` secret. `None`
@@ -57,7 +108,10 @@ impl Secret {
         if self.kind != "std:basic" {
             return None;
         }
-        Some((self.field("std:username")?, self.field("std:password")?))
+        Some((
+            self.field_str("std:username")?,
+            self.field_str("std:password")?,
+        ))
     }
 
     /// The typed [`OAuth2`] view of a `std:oauth2` secret. `None` for any
@@ -67,10 +121,12 @@ impl Secret {
             return None;
         }
         Some(OAuth2 {
-            access_token: self.field("std:access-token")?.to_string(),
-            expires_at: self.field("std:expires-at").and_then(|v| v.parse().ok()),
+            access_token: self.field_str("std:access-token")?.to_string(),
+            expires_at: self
+                .field_str("std:expires-at")
+                .and_then(|v| v.parse().ok()),
             scopes: self
-                .field("std:scopes")
+                .field_str("std:scopes")
                 .map(|v| v.split(' ').map(str::to_string).collect())
                 .unwrap_or_default(),
         })
@@ -80,56 +136,104 @@ impl Secret {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ciborium::Value;
 
-    fn secret(kind: &str, pairs: &[(&str, &str)]) -> Secret {
-        Secret {
-            kind: kind.to_string(),
-            fields: pairs
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
+    /// Encode a CBOR value the way the host sends it: as bytes.
+    fn enc(v: &Value) -> Vec<u8> {
+        let mut buf = Vec::new();
+        ciborium::into_writer(v, &mut buf).expect("encode");
+        buf
+    }
+
+    fn wit_secret(kind: &str, pairs: Vec<(&str, Value)>) -> Secret {
+        Secret::from_wit(
+            kind.to_string(),
+            pairs
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), enc(&v)))
                 .collect(),
-        }
+        )
+        .expect("fields decode")
     }
 
     #[test]
-    fn typed_accessors_match_the_kind() {
-        let b = secret(
-            "std:basic",
-            &[("std:username", "alex"), ("std:password", "pw")],
-        );
-        assert_eq!(b.as_basic(), Some(("alex", "pw")));
+    fn a_text_field_reads_back_as_a_string() {
+        let s = wit_secret("std:opaque", vec![("std:value", Value::Text("tok".into()))]);
+        assert_eq!(s.field_str("std:value"), Some("tok"));
+        assert_eq!(s.as_opaque(), Some("tok"));
+    }
+
+    #[test]
+    fn a_non_text_field_is_not_readable_as_a_string() {
+        // The whole point of decoding CBOR rather than assuming String: an
+        // integer field must not silently render as text.
+        let s = wit_secret("std:opaque", vec![("std:value", Value::Integer(7.into()))]);
+        assert_eq!(s.field_str("std:value"), None);
         assert_eq!(
-            b.as_opaque(),
+            s.as_opaque(),
             None,
-            "an accessor for another kind returns None"
-        );
-
-        let o = secret("std:opaque", &[("std:value", "tok")]);
-        assert_eq!(o.as_opaque(), Some("tok"));
-
-        let t = secret("std:oauth2", &[("std:access-token", "at")]);
-        assert_eq!(
-            t.as_oauth2().map(|x| x.access_token),
-            Some("at".to_string())
+            "a non-text std:value is not an opaque secret"
         );
     }
 
     #[test]
-    fn an_unknown_kind_yields_no_typed_view() {
-        let u = secret("acme:badge", &[("acme:serial", "42")]);
-        assert_eq!(u.as_basic(), None);
-        assert_eq!(u.as_opaque(), None);
-        assert_eq!(u.field("acme:serial"), Some("42"), "raw access still works");
-    }
-
-    #[test]
-    fn a_matching_shape_with_the_wrong_kind_is_not_coerced() {
-        // Two fields present, but the kind says otherwise. Guessing from field
-        // presence is how a client-cert gets mistaken for basic auth (spec §3.2).
-        let x = secret(
+    fn accessors_are_gated_on_kind_not_on_field_shape() {
+        let s = wit_secret(
             "std:client-cert",
-            &[("std:username", "a"), ("std:password", "b")],
+            vec![
+                ("std:username", Value::Text("u".into())),
+                ("std:password", Value::Text("p".into())),
+            ],
         );
-        assert_eq!(x.as_basic(), None);
+        assert_eq!(
+            s.as_basic(),
+            None,
+            "fields fit std:basic but the kind does not"
+        );
+        assert_eq!(s.as_opaque(), None);
+    }
+
+    #[test]
+    fn as_basic_returns_both_halves_for_the_right_kind() {
+        let s = wit_secret(
+            "std:basic",
+            vec![
+                ("std:username", Value::Text("u".into())),
+                ("std:password", Value::Text("p".into())),
+            ],
+        );
+        assert_eq!(s.as_basic(), Some(("u", "p")));
+    }
+
+    #[test]
+    fn raw_field_access_works_for_a_kind_with_no_typed_view() {
+        // A vendor kind has no accessor, so `field`/`field_str` are the only
+        // way in. They are kind-independent on purpose.
+        let s = wit_secret(
+            "acme:badge",
+            vec![("acme:serial", Value::Text("42".into()))],
+        );
+        assert_eq!(s.field_str("acme:serial"), Some("42"));
+        assert!(matches!(s.field("acme:serial"), Some(Value::Text(_))));
+        assert_eq!(s.as_basic(), None);
+        assert_eq!(s.as_opaque(), None);
+    }
+
+    #[test]
+    fn a_malformed_field_names_itself_in_the_error() {
+        let err = Secret::from_wit(
+            "std:opaque".into(),
+            vec![("std:value".into(), vec![0xff, 0xff, 0xff])],
+        )
+        .expect_err("undecodable CBOR must not be swallowed");
+        assert_eq!(err.field, "std:value");
+        assert!(
+            err.to_string().contains("std:value"),
+            "the message must name the field: {err}"
+        );
+        assert!(
+            !err.to_string().contains("255") && !err.to_string().contains("ff"),
+            "the message must not echo the field's bytes: {err}"
+        );
     }
 }
