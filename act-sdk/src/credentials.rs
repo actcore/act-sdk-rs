@@ -21,10 +21,26 @@ use ciborium::Value;
 /// A credential as handed to the component: an open `kind` string plus a
 /// field map, mirroring the `act:credentials/store` WIT shape — where each
 /// value crosses as CBOR bytes and may be a string, an integer, or a list.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Secret {
     pub kind: String,
     pub fields: BTreeMap<String, Value>,
+}
+
+/// Prints the kind and the field **names**, never a value. `Debug` is where
+/// credential material escapes by accident: a component author logs a secret
+/// while debugging, or wraps one in an error type that derives `Debug`, and
+/// the material lands in the guest's output. The host redacts its own
+/// equivalent (`SecretValue`) for the same reason; this keeps the two halves
+/// of the subsystem consistent. Field names are safe — `list-secrets` hands
+/// them to the agent already.
+impl fmt::Debug for Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Secret")
+            .field("kind", &self.kind)
+            .field("fields", &self.fields.keys().collect::<Vec<_>>())
+            .finish_non_exhaustive()
+    }
 }
 
 /// A field whose bytes were not valid CBOR. Names the field and nothing
@@ -43,11 +59,24 @@ impl fmt::Display for FieldDecodeError {
 impl std::error::Error for FieldDecodeError {}
 
 /// Typed view of a `std:oauth2` secret, returned by [`Secret::as_oauth2`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct OAuth2 {
     pub access_token: String,
     pub expires_at: Option<u64>,
     pub scopes: Vec<String>,
+}
+
+/// Redacts `access_token` and prints the rest. Expiry and scopes are not
+/// credential material — `ACT-CONSTANTS.md` §8.2 marks only the token secret —
+/// and they are the two fields worth seeing in a log.
+impl fmt::Debug for OAuth2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OAuth2")
+            .field("access_token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .field("scopes", &self.scopes)
+            .finish()
+    }
 }
 
 impl Secret {
@@ -332,6 +361,51 @@ mod tests {
         assert_eq!(
             s.as_oauth2().expect("secret").scopes,
             vec!["repo".to_string()]
+        );
+    }
+
+    #[test]
+    fn debug_prints_field_names_but_never_a_value() {
+        let s = wit_secret(
+            "std:basic",
+            vec![
+                ("std:username", Value::Text("alex".into())),
+                ("std:password", Value::Text("hunter2-sentinel".into())),
+            ],
+        );
+        let rendered = format!("{s:?}");
+        assert!(
+            !rendered.contains("hunter2-sentinel") && !rendered.contains("alex"),
+            "Debug leaked credential material: {rendered}"
+        );
+        assert!(
+            rendered.contains("std:password") && rendered.contains("std:basic"),
+            "Debug must still identify the secret: {rendered}"
+        );
+    }
+
+    #[test]
+    fn oauth2_debug_redacts_the_token_and_keeps_the_rest() {
+        let o = wit_secret(
+            "std:oauth2",
+            vec![
+                ("std:access-token", Value::Text("ghp-sentinel-token".into())),
+                ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
+                ("std:scopes", Value::Array(vec![Value::Text("repo".into())])),
+            ],
+        )
+        .as_oauth2()
+        .expect("std:oauth2 secret");
+        let rendered = format!("{o:?}");
+        assert!(
+            !rendered.contains("ghp-sentinel-token"),
+            "Debug leaked the access token: {rendered}"
+        );
+        // Expiry and scopes are not material (ACT-CONSTANTS 8.2) and are the
+        // two fields worth seeing in a log.
+        assert!(
+            rendered.contains("1760000000") && rendered.contains("repo"),
+            "Debug should keep the non-secret fields: {rendered}"
         );
     }
 }
