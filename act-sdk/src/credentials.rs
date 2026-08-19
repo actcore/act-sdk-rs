@@ -115,20 +115,36 @@ impl Secret {
     }
 
     /// The typed [`OAuth2`] view of a `std:oauth2` secret. `None` for any
-    /// other kind.
+    /// other kind, and `None` when the required `std:access-token` is
+    /// missing or is not a CBOR string.
+    ///
+    /// Field encodings are fixed by `ACT-CONSTANTS.md` §8.2:
+    /// `std:access-token` is a string, `std:expires-at` a u64 of Unix
+    /// seconds, `std:scopes` a list of strings. A field of any other CBOR
+    /// type is treated as absent rather than coerced — coercion here would
+    /// mean inventing scopes or an expiry the issuer never granted.
     pub fn as_oauth2(&self) -> Option<OAuth2> {
         if self.kind != "std:oauth2" {
             return None;
         }
+        let expires_at = match self.field("std:expires-at") {
+            Some(Value::Integer(i)) => u64::try_from(*i).ok(),
+            _ => None,
+        };
+        let scopes = match self.field("std:scopes") {
+            Some(Value::Array(items)) => items
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Text(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         Some(OAuth2 {
             access_token: self.field_str("std:access-token")?.to_string(),
-            expires_at: self
-                .field_str("std:expires-at")
-                .and_then(|v| v.parse().ok()),
-            scopes: self
-                .field_str("std:scopes")
-                .map(|v| v.split(' ').map(str::to_string).collect())
-                .unwrap_or_default(),
+            expires_at,
+            scopes,
         })
     }
 }
@@ -234,6 +250,88 @@ mod tests {
         assert!(
             !err.to_string().contains("255") && !err.to_string().contains("ff"),
             "the message must not echo the field's bytes: {err}"
+        );
+    }
+
+    #[test]
+    fn oauth2_reads_the_constants_registry_encodings() {
+        let s = wit_secret(
+            "std:oauth2",
+            vec![
+                ("std:access-token", Value::Text("at".into())),
+                ("std:expires-at", Value::Integer(1_760_000_000u64.into())),
+                (
+                    "std:scopes",
+                    Value::Array(vec![
+                        Value::Text("repo".into()),
+                        Value::Text("read:org".into()),
+                    ]),
+                ),
+            ],
+        );
+        let o = s.as_oauth2().expect("std:oauth2 secret");
+        assert_eq!(o.access_token, "at");
+        assert_eq!(o.expires_at, Some(1_760_000_000));
+        assert_eq!(o.scopes, vec!["repo".to_string(), "read:org".to_string()]);
+    }
+
+    #[test]
+    fn space_separated_scopes_are_not_silently_accepted() {
+        // The pre-fix code split a string on spaces. ACT-CONSTANTS 8.2 says
+        // std:scopes is a list<string>; a string is malformed, and reading it
+        // as one scope-per-word would invent scopes the issuer never granted.
+        let s = wit_secret(
+            "std:oauth2",
+            vec![
+                ("std:access-token", Value::Text("at".into())),
+                ("std:scopes", Value::Text("repo read:org".into())),
+            ],
+        );
+        let o = s.as_oauth2().expect("std:oauth2 secret");
+        assert!(
+            o.scopes.is_empty(),
+            "a non-list std:scopes must yield no scopes, got {:?}",
+            o.scopes
+        );
+    }
+
+    #[test]
+    fn a_string_expiry_is_not_parsed() {
+        let s = wit_secret(
+            "std:oauth2",
+            vec![
+                ("std:access-token", Value::Text("at".into())),
+                ("std:expires-at", Value::Text("1760000000".into())),
+            ],
+        );
+        assert_eq!(
+            s.as_oauth2().expect("std:oauth2 secret").expires_at,
+            None,
+            "8.2 registers std:expires-at as u64; a string is malformed"
+        );
+    }
+
+    #[test]
+    fn oauth2_without_an_access_token_is_none() {
+        let s = wit_secret("std:oauth2", vec![("std:scopes", Value::Array(vec![]))]);
+        assert_eq!(s.as_oauth2(), None, "access-token is required by 8.2");
+    }
+
+    #[test]
+    fn a_non_string_scope_entry_is_dropped_not_stringified() {
+        let s = wit_secret(
+            "std:oauth2",
+            vec![
+                ("std:access-token", Value::Text("at".into())),
+                (
+                    "std:scopes",
+                    Value::Array(vec![Value::Text("repo".into()), Value::Integer(3.into())]),
+                ),
+            ],
+        );
+        assert_eq!(
+            s.as_oauth2().expect("secret").scopes,
+            vec!["repo".to_string()]
         );
     }
 }
