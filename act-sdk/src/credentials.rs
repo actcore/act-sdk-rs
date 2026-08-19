@@ -319,6 +319,50 @@ mod tests {
         wit_secret("acme:creds", vec![("tok", map)])
     }
 
+    /// The other half of the contract `act-cli` pins on its side.
+    ///
+    /// This is the property the field-type migration exists to establish — that
+    /// what `act secret set` writes is what this module reads — and the two ends
+    /// live in different repos, so neither can hold a literal round trip. Both
+    /// are pinned against the written registry instead (`ACT-CONSTANTS.md` §8.3),
+    /// and this drives the SDK end through the *exact* encoding the host applies:
+    /// `act_types::cbor::to_cbor` over the JSON the store holds on disk.
+    ///
+    /// The two assertions that matter are `expires_at` and `scopes`, because
+    /// those are the members that degrade in SILENCE — a mistyped expiry yields
+    /// `None`, read as "never expires", and a mistyped scopes list yields an
+    /// empty vec, read as "grants nothing". Neither raises anything anywhere.
+    #[test]
+    fn the_hosts_encoding_of_a_stored_oauth_field_is_readable_here() {
+        // Byte-for-byte what act-cli's `to_wit_secret` produces for a field whose
+        // stored JSON is the object below.
+        let stored = serde_json::json!({
+            "std:access-token": "at",
+            "std:expires-at": 1_760_000_000u64,
+            "std:scopes": ["repo", "read:org"],
+        });
+        let secret = Secret::from_wit(
+            "std:oauth2".into(),
+            vec![("std:token".to_string(), act_types::cbor::to_cbor(&stored))],
+        )
+        .expect("the host's encoding decodes here");
+
+        let o = secret
+            .as_oauth2("std:token")
+            .expect("a readable OAuth credential");
+        assert_eq!(o.access_token, "at");
+        assert_eq!(
+            o.expires_at,
+            Some(1_760_000_000),
+            "a u64 expiry must survive the host's encoder; None here reads as 'never expires'"
+        );
+        assert_eq!(
+            o.scopes,
+            vec!["repo".to_string(), "read:org".to_string()],
+            "an array of text must survive; empty here reads as 'grants nothing'"
+        );
+    }
+
     #[test]
     fn oauth2_reads_the_members_of_its_field_map() {
         let s = oauth_secret(vec![
