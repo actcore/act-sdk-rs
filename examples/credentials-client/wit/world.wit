@@ -1,0 +1,12 @@
+package component:impl;
+
+world component-world {
+  // The host provides this; the component imports it. This is the one
+  // interface in ACT that runs component-to-host rather than host-to-component.
+  import act:credentials/store@0.1.0;
+
+  export act:tools/tool-provider@0.2.0;
+  // A live session is required by get-secret, and a session is only live
+  // after open-session returns — so the fetch happens on the tool call.
+  export act:sessions/session-provider@0.2.0;
+}

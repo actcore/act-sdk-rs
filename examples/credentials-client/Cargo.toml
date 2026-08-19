@@ -1,0 +1,13 @@
+[package]
+name = "credentials-client"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+act-sdk = { path = "../../act-sdk" }
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+
+[lib]
+crate-type = ["cdylib"]

@@ -1,0 +1,4 @@
+# Declared as a bare table: the class takes no parameters (ACT-AUTH.md 1.1.2).
+# An undeclared class is always denied and no grant can widen it, so without
+# this the component cannot reach the store however it is run.
+[std.capabilities."act:credentials"]
