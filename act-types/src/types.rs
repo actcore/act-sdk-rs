@@ -333,6 +333,50 @@ pub struct StdComponentInfo {
     pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Capabilities::is_empty")]
     pub capabilities: Capabilities,
+    /// Credentials this component declares it expects. OPTIONAL — an artifact
+    /// packed before this existed decodes with an empty vec.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub credentials: Vec<StdCredential>,
+}
+
+/// One credential a component declares it expects (design §4.3). Descriptive,
+/// not restrictive: the boundary is the profile, and a component asking for an
+/// undeclared key is refused by nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StdCredential {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<StdCredentialField>,
+}
+
+/// One field of a declared credential. `field_type` binds the encoding and how
+/// `act login` acquires it (design §3.2).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StdCredentialField {
+    pub key: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(rename = "type", default = "std_opaque")]
+    pub field_type: String,
+    #[serde(default = "yes")]
+    pub secret: bool,
+    #[serde(default = "yes")]
+    pub required: bool,
+    /// Flow parameters, meaningful for a `std:oauth2` field and ignored otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+}
+
+fn std_opaque() -> String {
+    "std:opaque".to_string()
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl ComponentInfo {
@@ -1041,5 +1085,33 @@ ports = [5900]
             w2.allow[0].protocols,
             vec![SocketProtocol::Tcp, SocketProtocol::Udp]
         );
+    }
+
+    #[test]
+    fn credentials_round_trip_and_are_absent_by_default() {
+        let mut info = StdComponentInfo::default();
+        assert!(info.credentials.is_empty(), "absent by default");
+
+        // An artifact packed before this field existed must still decode.
+        let old: StdComponentInfo = serde_json::from_str(r#"{"name":"c","version":"1"}"#).unwrap();
+        assert!(old.credentials.is_empty());
+
+        info.credentials.push(StdCredential {
+            key: "default".into(),
+            description: Some("Acme".into()),
+            fields: vec![StdCredentialField {
+                key: "acme:tenant".into(),
+                label: "Tenant".into(),
+                field_type: "std:opaque".into(),
+                secret: false,
+                required: true,
+                resource: None,
+                scopes: vec![],
+            }],
+        });
+        let json = serde_json::to_string(&info).unwrap();
+        let back: StdComponentInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.credentials, info.credentials);
+        assert_eq!(back.credentials[0].fields[0].field_type, "std:opaque");
     }
 }
