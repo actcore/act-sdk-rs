@@ -39,7 +39,8 @@ mod component {
     #[schemars(crate = "act_sdk::__private::schemars")]
     #[serde(crate = "act_sdk::__private::serde")]
     pub struct Description {
-        /// The secret's kind, e.g. `std:opaque`.
+        /// The `kind` string the host sent — `std:fields` for anything an
+        /// ACT host wrote. Carries no meaning; the field names do.
         kind: String,
         /// Field names only. Never their values.
         fields: Vec<String>,

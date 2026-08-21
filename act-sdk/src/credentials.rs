@@ -1,16 +1,16 @@
 //! Typed accessors over `act:credentials/store` secrets.
 //!
-//! The WIT carries an open string `kind` and an untyped field map (spec
-//! §3.2, D8) so that adding a credential kind never requires a WIT change,
-//! a version bump, or recompiling unrelated components. The typed view
-//! lives here instead: adding a kind is an ordinary library minor bump,
-//! not an ABI change.
+//! A credential is a set of named fields (`ACT-CONSTANTS.md` §8): there are no
+//! credential shapes, and the WIT's field map is untyped so that registering a
+//! field name never requires a WIT change, a version bump, or recompiling
+//! unrelated components. The typed view lives here instead: an accessor for a
+//! newly registered name is an ordinary library minor bump, not an ABI change.
 //!
-//! **No accessor infers meaning from shape.** Guessing from field shape is how
-//! a `std:client-cert` (a certificate and a private key — two fields) gets
-//! mistaken for a `std:basic` (a username and a password — also two fields).
-//! Two mechanisms prevent it, and which applies depends on where the type
-//! lives:
+//! **No accessor infers meaning from shape.** Guessing from shape is how a
+//! client certificate (a certificate and a private key — two fields) gets
+//! mistaken for a password credential (a username and a password — also two
+//! fields). Two mechanisms prevent it, and which applies depends on where the
+//! type lives:
 //!
 //! - [`Secret::as_basic`] is gated on the registered field **names**
 //!   `std:username` and `std:password`. Names carry meaning and are unique, so
@@ -29,9 +29,10 @@ use std::fmt;
 
 use ciborium::Value;
 
-/// A credential as handed to the component: an open `kind` string plus a
-/// field map, mirroring the `act:credentials/store` WIT shape — where each
-/// value crosses as CBOR bytes and may be a string, an integer, or a list.
+/// A credential as handed to the component: the WIT's vestigial `kind` string
+/// plus the field map that carries the meaning, mirroring the
+/// `act:credentials/store` record — where each value crosses as CBOR bytes and
+/// may be a string, a map, an integer, or a list.
 #[derive(Clone, PartialEq)]
 pub struct Secret {
     pub kind: String,
@@ -111,14 +112,19 @@ impl Secret {
         })
     }
 
-    /// The secret's kind, e.g. `"std:basic"` or a vendor-defined string
-    /// like `"acme:badge"`.
+    /// The `kind` string the host sent — `"std:fields"` for anything an ACT
+    /// host wrote (`ACT-CONSTANTS.md` §8.2.1).
+    ///
+    /// Exposed because the WIT carries it, not because it means anything:
+    /// **do not branch on it.** What a credential is lives in its field names,
+    /// and a host that did not write the record passes through whatever string
+    /// its store held.
     pub fn kind(&self) -> &str {
         &self.kind
     }
 
-    /// Raw field access by key, independent of `kind`. Always available,
-    /// including for kinds with no typed accessor.
+    /// Raw field access by key. Always available, including for names with no
+    /// typed accessor.
     pub fn field(&self, key: &str) -> Option<&Value> {
         self.fields.get(key)
     }
@@ -264,8 +270,8 @@ mod tests {
 
     #[test]
     fn as_basic_returns_both_halves_when_both_names_are_present() {
-        // Gated on the registered names, not on a credential-level kind — the
-        // kind here is deliberately something else.
+        // Gated on the registered names — the `kind` string here is
+        // deliberately not one this host would ever write.
         let s = wit_secret(
             "acme:creds",
             vec![
@@ -277,9 +283,9 @@ mod tests {
     }
 
     #[test]
-    fn raw_field_access_works_for_a_kind_with_no_typed_view() {
-        // A vendor kind has no accessor, so `field`/`field_str` are the only
-        // way in. They are kind-independent on purpose.
+    fn raw_field_access_works_for_a_name_with_no_typed_view() {
+        // An unregistered name has no accessor, so `field`/`field_str` are the
+        // only way in. They are name-agnostic on purpose.
         let s = wit_secret(
             "acme:badge",
             vec![("acme:serial", Value::Text("42".into()))],
@@ -476,7 +482,7 @@ mod tests {
     #[test]
     fn debug_prints_field_names_but_never_a_value() {
         let s = wit_secret(
-            "std:basic",
+            "std:fields",
             vec![
                 ("std:username", Value::Text("alex".into())),
                 ("std:password", Value::Text("hunter2-sentinel".into())),
@@ -488,7 +494,7 @@ mod tests {
             "Debug leaked credential material: {rendered}"
         );
         assert!(
-            rendered.contains("std:password") && rendered.contains("std:basic"),
+            rendered.contains("std:username") && rendered.contains("std:password"),
             "Debug must still identify the secret: {rendered}"
         );
     }
