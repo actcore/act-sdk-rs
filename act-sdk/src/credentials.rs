@@ -6,23 +6,25 @@
 //! unrelated components. The typed view lives here instead: an accessor for a
 //! newly registered name is an ordinary library minor bump, not an ABI change.
 //!
-//! **No accessor infers meaning from shape.** Guessing from shape is how a
-//! client certificate (a certificate and a private key — two fields) gets
-//! mistaken for a password credential (a username and a password — also two
-//! fields). Two mechanisms prevent it, and which applies depends on where the
-//! type lives:
+//! **No accessor infers meaning from shape, and none assumes a name.** Guessing
+//! from shape is how a client certificate (a certificate and a private key —
+//! two fields) gets mistaken for a password credential (a username and a
+//! password — also two fields). [`Secret::as_oauth2`] therefore takes the
+//! **field name**: a stored record carries names and values but no types, so
+//! the caller says which field is the OAuth one and the accessor never goes
+//! looking for a map that resembles one.
 //!
-//! - [`Secret::as_basic`] is gated on the registered field **names**
-//!   `std:username` and `std:password`. Names carry meaning and are unique, so
-//!   reading them by name is not a guess; guessing would be reading two
-//!   arbitrary fields because there happen to be two.
-//! - [`Secret::as_oauth2`] takes the **field name**, because a stored record
-//!   carries names and values but no types. The caller says which field is the
-//!   OAuth one; the accessor never goes looking for a map that resembles one.
+//! There is no `as_basic`, and no accessor keyed on a well-known name at all.
+//! `ACT-CONSTANTS.md` §8 registers field *types*, not field *names* — whoever
+//! stores a credential names its fields, and the component reading them is the
+//! party that asked for those names in the first place. An accessor built on
+//! `std:username`/`std:password` would put this crate in the business of
+//! issuing vocabulary, and it saved a component two calls to
+//! [`Secret::field_str`].
 //!
-//! There is no `as_opaque`. A `std:string` field's value *is* a CBOR string, so
-//! reading one is [`Secret::field_str`] with the name the component declared —
-//! there is no wrapper to unwrap and no canonical name to assume.
+//! There is no `as_opaque` either. A `std:string` field's value *is* a CBOR
+//! string, so reading one is [`Secret::field_str`] with the name the component
+//! declared — no wrapper to unwrap and no canonical name to assume.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -141,19 +143,6 @@ impl Secret {
     /// The `(username, password)` pair, when the credential carries both
     /// registered field names as CBOR strings.
     ///
-    /// Gated on the **names**, not on a credential-level kind: meaning lives in
-    /// field names (design §3.2), and `std:username` / `std:password` are
-    /// registered, so reading them by name reads the meaning. That is not the
-    /// forbidden inference — what a component must never do is guess from how
-    /// *many* fields are present, which is how a two-field client certificate
-    /// gets mistaken for a two-field password.
-    pub fn as_basic(&self) -> Option<(&str, &str)> {
-        Some((
-            self.field_str("std:username")?,
-            self.field_str("std:password")?,
-        ))
-    }
-
     /// The typed [`OAuth2`] view of one `std:oauth2`-typed **field**.
     ///
     /// The type is a property of the field, not of the credential (design
@@ -254,45 +243,23 @@ mod tests {
     }
 
     #[test]
-    fn a_two_field_credential_with_other_names_is_not_basic_auth() {
-        // The confusion the naming rule exists to prevent: a client certificate
-        // is also two secret fields. It is told apart by its field NAMES, which
-        // is why nothing here counts fields.
+    fn field_access_is_by_name_and_nothing_else() {
+        // The only way into a credential: no accessor knows a name in advance,
+        // so `field`/`field_str` with the name the component asked for is it.
         let s = wit_secret(
-            "acme:creds",
+            "std:fields",
             vec![
-                ("std:cert", Value::Text("-----BEGIN…".into())),
-                ("std:private-key", Value::Text("-----BEGIN…".into())),
+                ("acme:username", Value::Text("u".into())),
+                ("acme:password", Value::Text("p".into())),
             ],
         );
-        assert_eq!(s.as_basic(), None);
-    }
-
-    #[test]
-    fn as_basic_returns_both_halves_when_both_names_are_present() {
-        // Gated on the registered names — the `kind` string here is
-        // deliberately not one this host would ever write.
-        let s = wit_secret(
-            "acme:creds",
-            vec![
-                ("std:username", Value::Text("u".into())),
-                ("std:password", Value::Text("p".into())),
-            ],
+        assert_eq!(s.field_str("acme:username"), Some("u"));
+        assert!(matches!(s.field("acme:password"), Some(Value::Text(_))));
+        assert_eq!(
+            s.field("std:username"),
+            None,
+            "a name nobody stored is absent, whatever it looks like"
         );
-        assert_eq!(s.as_basic(), Some(("u", "p")));
-    }
-
-    #[test]
-    fn raw_field_access_works_for_a_name_with_no_typed_view() {
-        // An unregistered name has no accessor, so `field`/`field_str` are the
-        // only way in. They are name-agnostic on purpose.
-        let s = wit_secret(
-            "acme:badge",
-            vec![("acme:serial", Value::Text("42".into()))],
-        );
-        assert_eq!(s.field_str("acme:serial"), Some("42"));
-        assert!(matches!(s.field("acme:serial"), Some(Value::Text(_))));
-        assert_eq!(s.as_basic(), None);
     }
 
     #[test]
