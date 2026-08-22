@@ -1,5 +1,6 @@
 pub mod bytes;
 pub mod cbor;
+pub mod consent;
 pub mod context;
 pub mod credentials;
 pub mod response;
