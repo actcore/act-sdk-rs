@@ -20,9 +20,10 @@
 //! act_sdk::consent::check(matches!(decision, Decision::Allow), "db:drop", &database)?;
 //! ```
 //!
-//! `check` takes a `bool` rather than the WIT `decision` for the same reason
-//! `Secret::from_wit` takes a `String` kind: the enum is a per-component
-//! generated type this crate cannot name.
+//! `check` takes a `bool` rather than the WIT `decision` because `decision`
+//! is generated per component, the same as `consent_authority::request`
+//! itself — this crate cannot name it either, one level down from the wall
+//! that keeps an SDK-side `require()` from existing at all.
 
 use serde::Serialize;
 
@@ -57,6 +58,9 @@ impl std::fmt::Display for Denied {
 impl std::error::Error for Denied {}
 
 /// Turn a decision into a `Result` so a refusal short-circuits with `?`.
+///
+/// `allowed` is the host's decision reduced to a bool: pass `true` for
+/// `Decision::Allow`, `false` for `Decision::Deny`.
 pub fn check(allowed: bool, class: &str, key: &str) -> Result<(), Denied> {
     if allowed {
         Ok(())
@@ -71,7 +75,15 @@ pub fn check(allowed: bool, class: &str, key: &str) -> Result<(), Denied> {
 /// Why `args` could not be built.
 #[derive(Debug)]
 pub enum ArgsError {
-    /// The value did not encode as a CBOR map. Only a map carries dimensions.
+    /// The value did not encode as a CBOR map.
+    ///
+    /// Stricter here than at the host: `ACT-CONSENT.md` §2.2 says a non-map
+    /// `args` "carries no dimensions rather than being an error" once it
+    /// reaches `consent-authority::request`. This function refuses it
+    /// earlier instead, because a non-map value at this call site is almost
+    /// always a mistake (a type that serializes as a string or a list, say)
+    /// rather than a deliberate no-dimensions request, and surfacing that
+    /// mistake here beats letting the host silently drop it.
     NotAMap,
     Encode(String),
 }
@@ -93,6 +105,9 @@ impl std::error::Error for ArgsError {}
 /// the common case. Note that only `key` is host-resolved: a dimension here is
 /// one the component itself supplies, so an operator's `allow` over it is
 /// advisory. See `ACT-CONSENT.md` §8.6.
+///
+/// Refuses a non-map `dimensions` with [`ArgsError::NotAMap`] — stricter than
+/// the host, which accepts one; see that variant's doc for why.
 pub fn args(dimensions: impl Serialize) -> Result<Vec<u8>, ArgsError> {
     let mut buf = Vec::new();
     ciborium::into_writer(&dimensions, &mut buf).map_err(|e| ArgsError::Encode(e.to_string()))?;
