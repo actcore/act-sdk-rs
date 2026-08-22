@@ -1,0 +1,10 @@
+package component:impl;
+
+world component-world {
+  // The host provides this; the component imports it. Like
+  // act:credentials, this is one of the few interfaces in ACT that runs
+  // component-to-host rather than host-to-component.
+  import act:consent/consent-authority@0.1.0;
+
+  export act:tools/tool-provider@0.2.0;
+}

@@ -150,6 +150,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "consent-client"
+version = "0.14.1"
+dependencies = [
+ "act-sdk",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

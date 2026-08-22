@@ -1,0 +1,6 @@
+# Bare declaration, per ACT-CONSENT.md §3.1: no [[allow]] constraints, so the
+# class itself is the ceiling and an operator --grant is what actually
+# narrows it. A class absent here is always refused and no grant can widen
+# it, so without this line the component could never even ask.
+[std.capabilities."db:drop"]
+description = "Destructive operations (DROP, TRUNCATE)."
