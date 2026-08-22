@@ -99,6 +99,27 @@ mod component {
         database: String,
         ctx: &mut ActContext<ToolMeta>,
     ) -> ActResult<DropReport> {
+        // ACT-CONSENT.md §8.2: a class SHOULD fix its key's shape, and a
+        // component SHOULD reject or normalize a key that is not the plain
+        // identifier the class promised — otherwise a key like
+        // `test_scratch/../production` can match an operator's anchored
+        // `test_*` pattern while naming a different subject than the action
+        // actually touches. An empty key is rejected too: §2.2 gives an
+        // empty key a distinct meaning (approving or refusing the whole
+        // class), which is not what a caller passing `""` as a database
+        // name intends.
+        if database.is_empty()
+            || !database
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(ActError::invalid_args(
+                "database must be a bare identifier: ACT-CONSENT.md §8.2 — a key that \
+                 is not the shape its class promised makes an operator's pattern mean \
+                 something other than it appears to",
+            ));
+        }
+
         // Ask immediately before the point where the action would happen —
         // not earlier, and not cached from an open-session step this
         // component doesn't have (ACT-CONSENT.md §6).
@@ -106,9 +127,9 @@ mod component {
 
         let req = crate::act::consent::types::ConsentRequest {
             class: CLASS.to_string(),
-            // `key` is the plain database name — a bare identifier, per
-            // ACT-CONSENT.md §8.2, not a path or a URL, so an operator's
-            // glob pattern over it means what it appears to mean.
+            // `key` is the plain database name — a bare identifier, checked
+            // above per ACT-CONSENT.md §8.2, so an operator's glob pattern
+            // over it means what it appears to mean.
             key: database.clone(),
             summary: format!("Drop database \"{database}\""),
             // No dimension beyond `key` is worth declaring for this class;
@@ -118,12 +139,11 @@ mod component {
 
         let decision = crate::act::consent::consent_authority::request(req, meta).await;
 
-        act_sdk::consent::check(
-            matches!(decision, crate::act::consent::types::Decision::Allow),
-            CLASS,
-            &database,
-        )
-        .map_err(|e| ActError::capability_denied(e.to_string()))?;
+        // `check` takes the generated `Decision` directly — polarity fixed
+        // once by `impl_consent_decision!` below, not re-derived here — and
+        // `?` converts a refusal into `std:capability-denied` via
+        // `From<Denied> for ActError`.
+        act_sdk::consent::check(decision, CLASS, &database)?;
 
         Ok(DropReport {
             would_execute: format!("DROP DATABASE \"{database}\""),
@@ -131,3 +151,8 @@ mod component {
         })
     }
 }
+
+// Wires this component's generated `act:consent` `Decision` enum into
+// `act_sdk::consent::check` above. See `act_sdk::consent`'s module doc for
+// why this indirection exists instead of an SDK-side `require()`.
+act_sdk::impl_consent_decision!(crate::act::consent::types::Decision);
