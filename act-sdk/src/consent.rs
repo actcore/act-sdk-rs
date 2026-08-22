@@ -16,7 +16,7 @@
 //!     summary: format!("Drop database \"{database}\""),
 //!     args: Vec::new(),
 //! };
-//! let decision = act::consent::consent_authority::request(&req, meta).await;
+//! let decision = act::consent::consent_authority::request(req, meta).await;
 //! act_sdk::consent::check(matches!(decision, Decision::Allow), "db:drop", &database)?;
 //! ```
 //!

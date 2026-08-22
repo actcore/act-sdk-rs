@@ -50,11 +50,21 @@ mod component {
     /// Re-encode metadata the macro already CBOR-decoded to JSON back into
     /// the WIT `metadata` wire shape (`list<tuple<string, cbor>>`).
     ///
-    /// `act_sdk::cbor::{from_cbor, to_cbor}` are exact inverses for the
-    /// plain values metadata entries hold in practice (strings, numbers,
-    /// booleans, ...), so this is a faithful round-trip for the calls this
-    /// example ever sees — not an approximation kept only for the common
-    /// case.
+    /// This is not a faithful round-trip of everything the call carried.
+    /// `act-sdk-macros`'s `metadata_parse` step (`component.rs`, building
+    /// this tool's `ActContext`) decodes each entry with
+    /// `from_cbor::<serde_json::Value>` and silently drops any entry that
+    /// fails to decode — before `#[serde(flatten)]` above ever sees it. A
+    /// CBOR byte string is one such value: `std:forward`
+    /// (`ACT-CONSTANTS.md` §6, "object (CBOR-encoded metadata)") is built
+    /// from byte strings and is dropped this way, with no error and
+    /// nothing in this function to recover it. The six Cross-Cutting
+    /// Metadata keys (`ACT-CONSTANTS.md` §5 — `std:session-id` and its
+    /// siblings) are all plain `string`s, so they do survive; that is what
+    /// lets `ACT-CONSENT.md` §7.1's stated purpose — anchoring the
+    /// decision to a session — still hold here. Key order is also not
+    /// preserved (`serde_json::Map` is a `BTreeMap` in this workspace), but
+    /// neither spec treats metadata order as significant.
     fn to_wit_metadata(
         fields: &serde_json::Map<String, serde_json::Value>,
     ) -> Vec<(String, Vec<u8>)> {
