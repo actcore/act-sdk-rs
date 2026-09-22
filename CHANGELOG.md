@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-09-23
+
+**This patch release contains two breaking changes**, both in `act-sdk`: a
+credential accessor that assumed field names is gone, and the consent check can
+no longer be called with its polarity backwards. A component depending on
+`act-sdk = "0.14"` picks it up on `cargo update`; one that calls
+`Secret::as_basic` or passes a `bool` to `consent::check` stops compiling. Pin
+`=0.14.1` to stay where you are.
+
+### Added
+- **Helpers for an `act:consent` call site** (`act_sdk::consent`). The SDK
+  cannot make the host call itself — bindgen expands in the component's crate —
+  so these are the parts around it: encoding the request args, and turning the
+  decision into a `Result` that short-circuits with `?`. A refusal converts into
+  `ActError` as `std:capability-denied`.
+- `impl_consent_decision!`, which implements the new `ConsentDecision` trait
+  for a component's own generated `Decision` enum. See Changed for why.
+
+### Changed
+- **`consent::check` takes the decision, not a bool.** It is now
+  `check<D: ConsentDecision>`. The bool form let `matches!(d, Decision::Deny)`
+  compile and proceed on a refusal — a polarity mistake already in circulation
+  in examples. The bool-taking function survives as `check_allowed`, under a
+  name that cannot be mistaken for the trait form.
+- The consent args encoder accepts exactly the maps the host accepts. It used to
+  let through non-text keys, non-finite floats and out-of-range integers, which
+  the host silently drops.
+- `wit-bindgen` 0.60 → 0.62 and `wasip3` 0.7.1 → 0.9.0, bumped together so one
+  generator version resolves. Components built with the SDK still export
+  `tool-provider` as `async func` and still import `wasi:http@0.3.0`.
+- `syn` 3 and `darling` 0.24 in `act-sdk-macros`, and `base64` 0.23 in
+  `act-types`.
+
+### Removed
+- **`Secret::as_basic`.** Read credential fields by the names your component
+  asked for, with `field_str`. `ACT-CONSTANTS.md` no longer registers
+  credential field names, so an accessor keyed on `std:username` /
+  `std:password` assumed a vocabulary that does not exist. `as_oauth2` stays:
+  it takes the field name from the caller.
+
 ## [0.14.0] - 2026-08-11
 
 ### Added
