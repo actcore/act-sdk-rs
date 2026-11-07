@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-11-07
+
+**This patch release contains one breaking change**, in `act-sdk`: a session
+registry can no longer live in `thread_local!`. Under wasip3 every host fiber
+gets its own TLS, so a `thread_local` registry is repopulated from scratch on
+every tool call — sessions opened in one call are unknown in the next. A
+component changes its declaration to a plain `static` (via `LazyLock`, now in
+the prelude); the `SessionRegistry` API (`insert`/`with`/`with_mut`/`remove`)
+is unchanged.
+
+### Fixed
+
+- **Session state now survives wasip3's fiber-per-call scheduling.**
+  `SessionRegistry` stores its map in a `Mutex` instead of `RefCell`, making it
+  `Sync`, so it can live in a plain `static` (via `LazyLock`, exported by the
+  prelude). Critical sections never await, and a wasip3 fiber switches only at
+  an await point, so the lock is never contended. `sessions_persist_across_threads`
+  pins the regression; both examples follow the new pattern.
+
+### Changed
+
+- wit-bindgen 0.62 → 0.63, wasip3 0.9.0 → 0.10.0 (wasi:0.3.2 imports, matching
+  what hclient-based components already ship); schemars 1.2.3 and the rest of
+  the transitive tree via `cargo update`.
+
 ## [0.14.2] - 2026-09-23
 
 **This patch release contains two breaking changes**, both in `act-sdk`: a
