@@ -14,9 +14,11 @@ mod component {
         value: u64,
     }
 
-    thread_local! {
-        static SESSIONS: SessionRegistry<Counter> = SessionRegistry::new("ctr");
-    }
+    // A plain static, not thread_local!: under wasip3 every host fiber gets
+    // its own TLS, so a thread_local registry would not survive between
+    // tool calls. See act_sdk::sessions module docs.
+    static SESSIONS: LazyLock<SessionRegistry<Counter>> =
+        LazyLock::new(|| SessionRegistry::new("ctr"));
 
     /// Args accepted by `open-session`.
     #[derive(Deserialize, JsonSchema)]
@@ -38,21 +40,19 @@ mod component {
 
     #[session_open]
     fn open(args: OpenArgs) -> ActResult<String> {
-        Ok(SESSIONS.with(|r| r.insert(Counter { value: args.start })))
+        Ok(SESSIONS.insert(Counter { value: args.start }))
     }
 
     #[session_close]
     fn close(session_id: String) {
-        SESSIONS.with(|r| {
-            r.remove(&session_id);
-        });
+        SESSIONS.remove(&session_id);
     }
 
     #[act_tool(description = "Read the current counter value for this session.")]
     async fn read(ctx: &mut ActContext<ToolMeta>) -> ActResult<u64> {
         let id = ctx.metadata().session_id.clone();
         SESSIONS
-            .with(|r| r.with(&id, |c| c.value))
+            .with(&id, |c| c.value)
             .ok_or_else(|| ActError::session_not_found(format!("Unknown session-id: {id}")))
     }
 
@@ -64,11 +64,9 @@ mod component {
     ) -> ActResult<u64> {
         let id = ctx.metadata().session_id.clone();
         SESSIONS
-            .with(|r| {
-                r.with_mut(&id, |c| {
-                    c.value += by;
-                    c.value
-                })
+            .with_mut(&id, |c| {
+                c.value += by;
+                c.value
             })
             .ok_or_else(|| ActError::session_not_found(format!("Unknown session-id: {id}")))
     }

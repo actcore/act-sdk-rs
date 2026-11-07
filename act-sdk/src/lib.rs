@@ -18,8 +18,11 @@ pub mod prelude {
     pub use crate::{ActContext, ActError, ActResult, Bytes, Content, IntoToolResponse, Json};
     pub use crate::{SessionRegistry, sessions::session_id_from_metadata};
     pub use crate::{act_component, act_tool, session_close, session_open};
+    // Session state lives in a plain `static` (LazyLock), not thread_local! —
+    // see the sessions module docs for the wasip3 fiber-TLS rationale.
     pub use schemars::JsonSchema;
     pub use serde::Deserialize;
+    pub use std::sync::LazyLock;
 }
 
 // Re-export act-types constants for use by generated code and consumers

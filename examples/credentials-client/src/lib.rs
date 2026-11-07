@@ -15,9 +15,11 @@ use serde::Serialize;
 mod component {
     use super::*;
 
-    thread_local! {
-        static SESSIONS: SessionRegistry<()> = SessionRegistry::new("creds");
-    }
+    // A plain static, not thread_local!: under wasip3 every host fiber gets
+    // its own TLS, so a thread_local registry would not survive between
+    // tool calls. See act_sdk::sessions module docs.
+    static SESSIONS: LazyLock<SessionRegistry<()>> =
+        LazyLock::new(|| SessionRegistry::new("creds"));
 
     /// Args accepted by `open-session`. None: this component authenticates
     /// nothing at open time, on purpose — see `open` below.
@@ -55,14 +57,12 @@ mod component {
         // so a fetch from inside names a session the host has never seen and
         // is refused with invalid-session (ACT-AUTH.md 1.1.4). Fetch lazily,
         // on the tool call. Do not "fix" this by moving it up.
-        Ok(SESSIONS.with(|r| r.insert(())))
+        Ok(SESSIONS.insert(()))
     }
 
     #[session_close]
     fn close(session_id: String) {
-        SESSIONS.with(|r| {
-            r.remove(&session_id);
-        });
+        SESSIONS.remove(&session_id);
     }
 
     #[act_tool(description = "Describe the credential stored under `key`, without disclosing it.")]
